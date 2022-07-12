@@ -2,16 +2,16 @@
 
 #directory of file including filename.  All files must be in .csv format
 dataFiles:
- xDrip: C:\xdrip\data.csv      #required
- garmin: C:\garmin\data.csv    #optional
- oura: C:\oura\data.csv        #optional
- cronometer: C:\crono\data.csv #required
+ CGMData: C:\xdrip\data.csv      #required
+ ExData: C:\garmin\data.csv    #optional
+ sleepData: C:\oura\data.csv        #optional
+ mealData: C:\crono\data.csv      #required
 
 #date range for the CGM processing window.  Allows downloading all data instead of matching window.
 # must be in the form of Month/Day/Year
 dateRange:
- initialDay: 07/11/2022 #required
- finalDay: 09/11/2022   #required
+ initialDay: 07/07/2020 #required
+ finalDay: 09/11/2020   #required
 
 #This will save all response graphs and data
 outputFileDirectory: C:\documents\savedData.csv

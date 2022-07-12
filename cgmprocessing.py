@@ -15,6 +15,26 @@ from bokeh.transform import transform
 
 class CGMProcessing:
     def __init__(self, parameters):
+        self.initialDay = datetime.strptime(parameters['dateRange']['initialDay'], '%m/%d/%Y').date()
+        self.finalDay = datetime.strptime(parameters['dateRange']['finalDay'], '%m/%d/%Y').date()
+        self.filePaths = parameters.get('dataFiles', [])
+        self.healthData = []
 
-    self.initialDay = parameters['initialDay'][0].split("/")
-    self.finalDay = parameters['initialDay'][1].split("/")
+
+    def capture_data(self):
+        for dataType in self.filePaths:
+            print("file", self.filePaths[dataType])
+            self.open_file(self.filePaths[dataType], dataType)
+
+        return True
+
+    def open_file(self, file, key):
+        data = pd.read_csv(file,encoding = "ISO-8859-1")
+        if key == 'ExData':
+           data = data.rename(columns={'Time': 'Activity Time'})
+        data = data.rename(columns={'DAY' or 'Day': 'Date'})
+        data = data.rename(columns={'TIME': 'Time'})
+        data['filename'] = filename
+        data = clean_date_column(data)
+        data = clean_time_column(data)
+        data = add_datetime(data)
