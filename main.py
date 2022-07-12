@@ -9,9 +9,7 @@ def validate_yaml():
         except yaml.YAMLError as exc:
             raise exc
 
-    mandatory_params = ['email', 'password', 'disableAntiLock', 'remote', 'experienceLevel', 'jobTypes', 'date',
-                        'positions', 'locations', 'distance', 'outputFileDirectory', 'checkboxes', 'universityGpa',
-                        'languages', 'industry', 'technology', 'personalInfo', 'eeo', 'uploads']
+    mandatory_params = ['dataFiles', 'dateRange', 'outputFileDirectory']
 
     for mandatory_param in mandatory_params:
         if mandatory_param not in parameters:
@@ -53,45 +51,6 @@ def validate_yaml():
 
     assert len(parameters['uploads']) >= 1 and 'resume' in parameters['uploads']
 
-    assert len(parameters['checkboxes']) > 0
-
-    checkboxes = parameters.get('checkboxes', [])
-    assert isinstance(checkboxes['driversLicence'], bool)
-    assert isinstance(checkboxes['requireVisa'], bool)
-    assert isinstance(checkboxes['legallyAuthorized'], bool)
-    assert isinstance(checkboxes['urgentFill'], bool)
-    assert isinstance(checkboxes['commute'], bool)
-    assert isinstance(checkboxes['backgroundCheck'], bool)
-    assert 'degreeCompleted' in checkboxes
-
-    assert isinstance(parameters['universityGpa'], (int, float))
-
-    languages = parameters.get('languages', [])
-    language_types = {'none', 'conversational', 'professional', 'native or bilingual'}
-    for language in languages:
-        assert languages[language].lower() in language_types
-
-    industry = parameters.get('industry', [])
-
-    for skill in industry:
-        assert isinstance(industry[skill], int)
-    assert 'default' in industry
-
-    technology = parameters.get('technology', [])
-
-    for tech in technology:
-        assert isinstance(technology[tech], int)
-    assert 'default' in technology
-
-    assert len(parameters['personalInfo'])
-    personal_info = parameters.get('personalInfo', [])
-    for info in personal_info:
-        assert personal_info[info] != ''
-
-    assert len(parameters['eeo'])
-    eeo = parameters.get('eeo', [])
-    for survey_question in eeo:
-        assert eeo[survey_question] != ''
 
     return parameters
 
