@@ -14,5 +14,7 @@ from bokeh.transform import transform
 
 
 class CGMProcessing:
-    def __init__(self):
+    def __init__(self, parameters):
 
+    self.initialDay = parameters['initialDay'][0].split("/")
+    self.finalDay = parameters['initialDay'][1].split("/")

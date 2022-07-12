@@ -15,9 +15,9 @@ def validate_yaml():
         if mandatory_param not in parameters:
             raise Exception(mandatory_param + ' is not inside the yml file!')
 
-    assert isinstance(parameters['disableAntiLock'], bool)
+    assert isinstance(parameters['dataFiles'], [])
 
-    assert isinstance(parameters['remote'], bool)
+    assert isinstance(parameters['dateRange'], [])
 
     assert len(parameters['experienceLevel']) > 0
     experience_level = parameters.get('experienceLevel', [])
@@ -42,9 +42,6 @@ def validate_yaml():
         if date[key]:
             at_least_one_date = True
     assert at_least_one_date
-
-    approved_distances = {0, 5, 10, 25, 50, 100}
-    assert parameters['distance'] in approved_distances
 
     assert len(parameters['positions']) > 0
     assert len(parameters['locations']) > 0
