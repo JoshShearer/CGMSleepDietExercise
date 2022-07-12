@@ -100,5 +100,5 @@ if __name__ == '__main__':
 
     parameters = validate_yaml()
 
-    instance = CGMProcessing()
+    instance = CGMProcessing(parameters)
 

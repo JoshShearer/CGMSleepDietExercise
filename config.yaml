@@ -2,10 +2,10 @@
 
 #directory of file including filename.  All files must be in .csv format
 dataFiles:
- xDrip: False
- garmin: True
- oura: False
- cronometer: False
+ xDrip: C:\xdrip\data.csv
+ garmin: C:\garmin\data.csv
+ oura: C:\oura\data.csv
+ cronometer: C:\crono\data.csv
 
 #date range for the CGM processing window.  Allows downloading all data instead of matching window.
 # must be in the form of Month/Day/Year
@@ -13,25 +13,5 @@ dateRange:
  initialDay: 07/11/2022
  finalDay: 09/11/2022
 
-
-positions:
-# - Sotware Developer
-# - Software Engineer
- - FullStack
- - Blockchain Engineer
- - Web3 Developer
- - FrontEnd
-# - BackEnd
- #- ...
-locations:
- - Seattle
- - Denver
- - Las Vegas
- - Austin
- - New Orleans
- - Miami
- #- ...
-distance: 25
-
 #This will save all response graphs and data
-outputFileDirectory: H:\OneDrive\Documents\MiscDocs\Filing Cabinet\Professional\JobAppsJuly2022
+outputFileDirectory: C:\documents\savedData.csv
