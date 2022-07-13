@@ -4,7 +4,7 @@ This script will take in and process data from the following sources
 ```yaml
 xDrip+ => Continuous Glucose Monitoring Data
 Oura => Sleep Data
-Cronometer> = Food Intake and suppliment consumption
+Cronometer => Food Intake and supplement consumption
 Garmin => Exercise and training data
 ```
 
