@@ -1,4 +1,5 @@
 import yaml
+import os
 
 from cgmprocessing import CGMProcessing
 
@@ -17,33 +18,11 @@ def validate_yaml():
 
     assert len(parameters['dataFiles']) > 1
     assert len(parameters['dateRange']) == 2
-
-    # for key in experience_level.keys():
-    #     if experience_level[key]:
-    #         at_least_one_experience = True
-    # assert at_least_one_experience
-    #
-    # assert len(parameters['jobTypes']) > 0
-    # job_types = parameters.get('jobTypes', [])
-    # at_least_one_job_type = False
-    # for key in job_types.keys():
-    #     if job_types[key]:
-    #         at_least_one_job_type = True
-    # assert at_least_one_job_type
-    #
-    # assert len(parameters['date']) > 0
-    # date = parameters.get('date', [])
-    # at_least_one_date = False
-    # for key in date.keys():
-    #     if date[key]:
-    #         at_least_one_date = True
-    # assert at_least_one_date
-    #
-    # assert len(parameters['positions']) > 0
-    # assert len(parameters['locations']) > 0
-    #
-    # assert len(parameters['uploads']) >= 1 and 'resume' in parameters['uploads']
-
+    fileData = parameters.get('dataFiles', [])
+    assert 'CGMData' in fileData
+    assert 'mealData' in fileData
+    
+    assert os.path.isdir(parameters['outputFileDirectory']), "output directory does not exist"
 
     return parameters
 
@@ -55,4 +34,7 @@ if __name__ == '__main__':
     instance = CGMProcessing(parameters)
 
     instance.capture_data()
+    instance.clean_data()
+    instance.process_mealData()
+    instance.deep_analysis()
 
