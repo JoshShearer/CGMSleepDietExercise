@@ -58,5 +58,9 @@ To run the bot, run the following in the command line:
 ```
 python3 main.py
 ```
+## Sample Outputs
 
-
+matplotlib (Step Response for each meal)
+bokeh (Step Response for each meal)
+heat (Heatmap of all meals over available data)
+multiplot (Single plot with all meal step responses over teh available data)
