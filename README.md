@@ -21,7 +21,7 @@ Next, you need to fill out the config.yaml file. Most of this is self-explanator
 dataFiles:
  CGMData: C:\xdrip\data.csv      #required
  ExData: C:\garmin\data.csv     #optional
-sleepData: C:\oura\data.csv        #optional
+ sleepData: C:\oura\data.csv        #optional
  mealData: C:\crono\data.csv      #required
 
 #date range for the CGM processing window.  Allows downloading all data instead of matching window.
