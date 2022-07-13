@@ -61,6 +61,10 @@ python3 main.py
 ## Sample Outputs
 
 matplotlib (Step Response for each meal)
+![matplot](https://user-images.githubusercontent.com/50993714/178624101-c92fcc64-ad0a-4399-9c49-bba796ac2473.png)
 bokeh (Step Response for each meal)
+![bokeh_step](https://user-images.githubusercontent.com/50993714/178624083-650f4921-9099-4794-8eae-8813ea87fb1a.png)
 heat (Heatmap of all meals over available data)
+![bokeh_heat](https://user-images.githubusercontent.com/50993714/178624090-a2845566-04be-455c-8b5f-e1c9f7e1f8d6.png)
 multiplot (Single plot with all meal step responses over teh available data)
+![bokeh_multi](https://user-images.githubusercontent.com/50993714/178624096-f99da1e8-b0d4-4e4f-898f-4353e814de38.png)
