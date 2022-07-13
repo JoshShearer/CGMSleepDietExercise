@@ -44,7 +44,7 @@ dataAnalysis:
  multiplot: True       #A single plot with all step responses shown.
 
 adjustments:
-  calWindow: 5    #If you are adjusting the data for calibration, this will adjust and smooth values over this number of hours.
+  calWindow: 5    #If you are adjusting the data for calibration, this will adjust and smooth values over this number of hours before and after the calibration time.
   responseTime: 3 #window of time from meal start to measure glucose response      
 
 #This will save all response graphs and data
