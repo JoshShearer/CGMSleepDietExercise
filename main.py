@@ -22,6 +22,11 @@ def validate_yaml():
     assert 'CGMData' in fileData
     assert 'mealData' in fileData
     
+    if parameters['dataAnalysis']['biometricCorr']:
+        assert len(parameters['Biometrics']) > 0
+    if parameters['dataAnalysis']['supplementCorr']:
+        assert len(parameters['Supplements']) > 0
+    
     assert os.path.isdir(parameters['outputFileDirectory']), "output directory does not exist"
 
     return parameters
