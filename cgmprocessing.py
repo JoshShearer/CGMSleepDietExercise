@@ -15,16 +15,31 @@ from bokeh.transform import transform
 
 class CGMProcessing:
     def __init__(self, parameters):
-        self.initialDay = datetime.strptime(parameters['dateRange']['initialDay'], '%m/%d/%Y').date()
-        self.finalDay = datetime.strptime(parameters['dateRange']['finalDay'], '%m/%d/%Y').date()
+        self.initialDay = self.determine_time(parameters['dateRange']['initialDay'], "initial")
+        self.finalDay = self.determine_time(parameters['dateRange']['finalDay'], "final")
         self.filePaths = parameters.get('dataFiles', [])
         self.healthData = {}
         self.analysis = parameters.get('dataAnalysis', [])
         self.adjustments = parameters.get('adjustments')
         self.calWindow = datetime.strptime(str(self.adjustments['calWindow']), '%H').time()
         self.resWindow = datetime.strptime(str(self.adjustments['responseTime']), '%H').time()
+        self.minCarbs = self.adjustments['minCarbs']
+        self.supplements = parameters['Supplements'] if self.analysis['supplementCorr'] else ''
+        self.biometrics = parameters['Biometrics'] if self.analysis['biometricCorr'] else ''
         self.output = parameters['outputFileDirectory']
 
+        
+    def determine_time(self, startTime, day):
+        timeString = startTime.split(' ')
+        if len(timeString) > 1:
+            time = datetime.strptime(startTime, '%m/%d/%Y %H:%M')
+        else:
+            if day == "initial":
+                time = datetime.strptime(startTime + ' 0:0', '%m/%d/%Y %H:%M')
+            else:
+                time = datetime.strptime(startTime + ' 23:59', '%m/%d/%Y %H:%M')
+        return time
+    
     def capture_data(self):
         for fileType in self.filePaths:
             print("file", self.filePaths[fileType])
@@ -33,7 +48,10 @@ class CGMProcessing:
         return True
 
     def open_files(self, file, key):
-        data = pd.read_csv(file,encoding = "ISO-8859-1")
+        if key == 'CGMData':
+            data = pd.read_csv(file, sep=';')
+        else:
+            data = pd.read_csv(file,encoding = "ISO-8859-1")
         if key == 'ExData':
            data = data.rename(columns={'Time': 'Activity Time'})
         data = data.rename(columns={'DAY' or 'Day': 'Date'})
@@ -68,7 +86,7 @@ class CGMProcessing:
                 del df['str_split']
                 split = True
         if key == 'CGMData':
-            df['Date'] = pd.to_datetime(df['Date'], format='%m-%d-%Y', exact=True)
+            df['Date'] = pd.to_datetime(df['Date'], format='%d-%m-%Y', exact=True)
         else:
             df['Date'] = pd.to_datetime(df['Date'], infer_datetime_format=True)
         df['Date'] = df['Date'].dt.date
@@ -104,13 +122,11 @@ class CGMProcessing:
         self.healthData['combined_Health']['Date'].fillna(self.healthData['combined_Health']['Date'])
         self.healthData['combined_Health'] = self.healthData['combined_Health'].sort_values(by='Datetime', ascending=True)
         self.healthData['combined_Health'] = self.healthData['combined_Health'].set_index("Date", drop=False)
-        self.healthData['CGMData'] = self.healthData['CGMData'].set_index("Date", drop=False)
-        self.healthData['CGMData'] = self.healthData['CGMData'][(self.healthData['CGMData']['Date'] >= self.initialDay) & (self.healthData['CGMData']['Date'] <= self.finalDay)]
-        self.healthData['CGMData'] = self.healthData['CGMData'].sort_values('Datetime', ascending=True)
-        self.healthData['CGMData'] = self.healthData['CGMData'].set_index("Datetime", drop=False)
+        self.healthData['CGMData'] = self.healthData['CGMData'].set_index(["Datetime"], drop=False).loc[self.initialDay.strftime('%Y-%m-%d %H:%m:%S'):self.finalDay.strftime('%Y-%m-%d %H:%m:%S'),:]
         if self.analysis['calCorrection']:
-            self.healthData['CGMData_corrected'] = self.bg_calibration_correction()
-            self.healthData['CGMData_corrected'] = self.healthData['CGMData_corrected'].set_index("Date", drop=False)
+            self.healthData['CGMData_original'] = self.healthData['CGMData']
+            self.healthData['CGMData'] = self.bg_calibration_correction()
+            self.healthData['CGMData'] = self.healthData['CGMData'].set_index("Date", drop=False)
         return
 
     def bg_calibration_correction(self):
@@ -183,20 +199,17 @@ class CGMProcessing:
         return
 
     def bg_food_response_matplot(self):
-        current_date = self.initialDay
-        while current_date <= self.finalDay:
+        current_date = self.initialDay.date()
+        while current_date <= self.finalDay.date():
             print("Processing Data for " + str(current_date))
-            df_current_day = self.healthData['combined_Health'].loc[current_date,:]
+            df_current_day = self.healthData['combined_Health'].set_index("Date", drop=False).loc[current_date,:]
             df_current_day.sort_values(['Datetime'], ascending=[True])
             df_current_day = df_current_day.set_index("Datetime", drop = False)
-            if self.analysis['calCorrection']:
-                df_current_day_CGM = self.healthData['CGMData_corrected'].loc[current_date,:]
-            else:
-                df_current_day_CGM = self.healthData['CGMData'].loc[current_date,:]
+            df_current_day_CGM = self.healthData['CGMData'].set_index("Date", drop=False).loc[current_date,:]
             df_current_day_CGM.sort_values(['Datetime'], ascending=[True])
             df_current_day_CGM = df_current_day_CGM.set_index("Datetime", drop=False)
 
-            response_meals = df_current_day.loc[(df_current_day['group'] == 'mealData') & (df_current_day['Carbs (g)'] >= 5)]
+            response_meals = df_current_day.loc[(df_current_day['group'] == 'mealData') & (df_current_day['Carbs (g)'] >= self.minCarbs)]
             sleep_data = df_current_day.loc[df_current_day['group'] == 'sleepData']
             exercise_data = df_current_day.loc[df_current_day['group'] == 'ExData']
             # exercise_data = exercise_data.set_index("Datetime", drop=False)
@@ -220,6 +233,8 @@ class CGMProcessing:
                 df_CGM_response = df_current_day_CGM.between_time(period_start_str,period_end_str)
                 df_exercise = exercise_data.between_time(period_start_str,period_end_str)
 
+                if len(df_CGM_response) == 0:
+                    continue
                 title = (str(df_CGM_response['Date'].values[0]) + " Time (Day)")
 
                 df_CGM_response.plot(x='Time', y='UDT_CGMS', ax=axes[index//2,1 if index % 2 else 0], subplots=True)
@@ -230,10 +245,10 @@ class CGMProcessing:
                         activity_info = workout[1]
                         activity_time = pd.to_datetime(activity_info['Activity Time'])
                         activity_time = activity_time.to_pydatetime()
-                        start_time = activity_info.Datetime.to_pydatetime()
-                        end_time = start_time + timedelta(hours=activity_time.hour, minutes=activity_time.minute)
-                        axes[index//2,1 if index % 2 else 0].axvspan(str(start_time), str(end_time), color='blue', alpha=0.5)
-                        axes[index//2,1 if index % 2 else 0].annotate(activity_info.Title + '\n' + activity_info['Calories'] + ' Calories Burned', xy=(str(start_time),df_CGM_response['UDT_CGMS'].median()))
+                        determine_time = activity_info.Datetime.to_pydatetime()
+                        end_time = determine_time + timedelta(hours=activity_time.hour, minutes=activity_time.minute)
+                        axes[index//2,1 if index % 2 else 0].axvspan(str(determine_time), str(end_time), color='blue', alpha=0.5)
+                        axes[index//2,1 if index % 2 else 0].annotate(activity_info.Title + '\n' + activity_info['Calories'] + ' Calories Burned', xy=(str(determine_time),df_CGM_response['UDT_CGMS'].median()))
 
                 axes[index//2,1 if index % 2 else 0].set_title('BG Response to ' + df_meal_data.loc['Food Name'])
                 axes[index//2,1 if index % 2 else 0].set_xlabel(str(df_CGM_response['Date'].values[0]) + " Time(Day)")
@@ -246,13 +261,14 @@ class CGMProcessing:
         return
 
     def bg_food_response_bokeh(self):
-        df_health_data = self.healthData['combined_Health'].loc[self.initialDay:self.finalDay,:]
+        df_health_data = self.healthData['combined_Health'].set_index("Datetime", drop=False).loc[self.initialDay:self.finalDay,:]
+        df_health_data = df_health_data.set_index("Date", drop=False) 
         df_health_data.sort_values(['Datetime'], ascending=[True])
         df_health_data = df_health_data.set_index("Datetime", drop = False)
-        df_period_CGM = self.healthData['CGMData_corrected'].loc[self.initialDay:self.finalDay,:]
-        df_period_CGM.sort_values(['Datetime'], ascending=[True])
-        df_period_CGM = df_period_CGM.set_index("Datetime", drop=False)
-        df_period_CGM = df_period_CGM.sort_index()
+        df_period_CGM = self.healthData['CGMData'].loc[self.initialDay.date():self.finalDay.date(),:]
+        # df_period_CGM.sort_values(['Datetime'], ascending=[True])
+        # df_period_CGM = df_period_CGM.set_index("Datetime", drop=False)
+        # df_period_CGM = df_period_CGM.sort_index()
 
         response_meals = df_health_data.loc[(df_health_data['group'] == 'mealData') & (df_health_data['Carbs (g)'] >= 5)]
         exercise_data = df_health_data.loc[df_health_data['group'] == 'ExData']
@@ -280,10 +296,10 @@ class CGMProcessing:
 
 
             # add some renderers
-            start_time = meal.Datetime
-            end_time = start_time + timedelta(hours=self.resWindow.hour)
-            df_meal_CGM = df_period_CGM.loc[start_time:end_time,:]
-            df_meal_exercise = exercise_data.loc[start_time:end_time,:]
+            determine_time = meal.Datetime
+            end_time = determine_time + timedelta(hours=self.resWindow.hour)
+            df_meal_CGM = df_period_CGM.loc[determine_time:end_time,:]
+            df_meal_exercise = exercise_data.loc[determine_time:end_time,:]
             try:
                 the_beginning = pd.to_datetime(df_meal_CGM.iloc[0]['Datetime']).to_pydatetime()
             except: #Missing Data at times due to lack of sensor
@@ -300,9 +316,9 @@ class CGMProcessing:
                     activity_info = workout
                     activity_time = pd.to_datetime(activity_info['Activity Time'])
                     activity_time = activity_time.to_pydatetime()
-                    start_time = activity_info.Datetime.to_pydatetime()
-                    end_time = start_time + timedelta(hours=activity_time.hour, minutes=activity_time.minute)
-                    exercise_box = BoxAnnotation(left=start_time, right=end_time, fill_alpha=0.4, fill_color='blue')
+                    determine_time = activity_info.Datetime.to_pydatetime()
+                    end_time = determine_time + timedelta(hours=activity_time.hour, minutes=activity_time.minute)
+                    exercise_box = BoxAnnotation(left=determine_time, right=end_time, fill_alpha=0.4, fill_color='blue')
                     label5 = Label(x=300, y=int(df_meal_CGM.UDT_CGMS.min()*1.2), x_units='screen', text="Activity = " + str(workout.Title), render_mode='css',
                         border_line_color='black', border_line_alpha=1.0,
                         background_fill_color='white', background_fill_alpha=1.0)
@@ -355,7 +371,7 @@ class CGMProcessing:
     
     def bg_heatmap(self):
 
-        num_days = (self.finalDay-self.initialDay).days + 1#inclusive of last day
+        num_days = (self.finalDay.date()-self.initialDay.date()).days + 1#inclusive of last day
         date_list = [self.initialDay + timedelta(days=x) for x in range(num_days)]
 
 
@@ -367,7 +383,7 @@ class CGMProcessing:
         time_index = [time_list[x].strftime("%H:%M:%S") for x in range(len(time_list))]
         date_column = [date_list[x].strftime("%Y-%m-%d") for x in range(len(date_list))]
 
-        df_CGM_period_max = self.healthData['CGMData_corrected'].set_index(self.healthData['CGMData_corrected']['Datetime'])
+        df_CGM_period_max = self.healthData['CGMData'].set_index(self.healthData['CGMData']['Datetime'])
         df_CGM_end_test = df_CGM_period_max.loc[df_CGM_period_max['Date'] == self.finalDay]
         df_CGM_end_test= df_CGM_end_test.resample('15Min', base=15, label='right')['UDT_CGMS'].max()
         df_CGM_period_max = df_CGM_period_max.resample('15Min', base=15, label='right')['UDT_CGMS'].max()
@@ -376,7 +392,6 @@ class CGMProcessing:
             for day in date_list:
                 if day == self.finalDay:
                     for index in time_list:
-                        # if index.date() == CGM_END
                         try:
                             df_CGM_period_max[datetime.combine(self.finalDay,index.time())]
                         except:
@@ -386,8 +401,15 @@ class CGMProcessing:
         df_meals = df_meals.dropna(how='all', axis=1) # drop all fully nan columns as they are not useful here
         df_dt_matrix_CGM = pd.DataFrame(0, columns=date_column, index=time_index)
         df_dt_matrix_meals = pd.DataFrame(0, columns=date_column, index=time_index)
-
+        
         for date, date_array in df_dt_matrix_CGM.iteritems():
+            #Remove unused time series
+            if date == self.initialDay.date().strftime("%Y-%m-%d"):
+                date_array = date_array.loc[self.initialDay.time().strftime('%H:%M:%S'):'23:59:59']
+            elif date == self.finalDay.date().strftime("%Y-%m-%d"):
+                end_time = df_CGM_period_max.sort_index().index[len(df_CGM_period_max)-1].to_pydatetime().time().strftime('%H:%M:%S')
+                date_array = date_array.loc['00:00:00':end_time,]
+                
             date_array = date_array.reset_index()
             period_date = datetime.strptime(date, "%Y-%m-%d")
             df_meals_day = df_meals.loc[df_meals['Date'] == period_date.date()] #& (df_current_day['Carbs (g)'] >= 5)
@@ -413,6 +435,7 @@ class CGMProcessing:
                         CGM_max = df_CGM_period_max[next_dt]
                     except Exception as e:
                         CGM_max = df_CGM_period_max[previous_dt]
+                        continue
 
                 df_dt_matrix_CGM.loc[current_period_time_str, date] = CGM_max
                 meal_string = ''
@@ -500,10 +523,11 @@ class CGMProcessing:
 
     def bg_multi_plot(self):
         # prepare some data
-        df_health_data = self.healthData['combined_Health'].loc[self.initialDay:self.finalDay,:]
+        df_health_data = self.healthData['combined_Health'].set_index("Datetime", drop=False).loc[self.initialDay:self.finalDay,:]
+        df_health_data = df_health_data.set_index("Date", drop=False) 
         df_health_data.sort_values(['Datetime'], ascending=[True])
-        df_health_data = df_health_data.set_index("Datetime", drop = False)
-        df_period_CGM = self.healthData['CGMData_corrected'].loc[self.initialDay:self.finalDay,:]
+        df_period_CGM = self.healthData['CGMData'].set_index("Datetime", drop=False).loc[self.initialDay:self.finalDay,:]
+        df_period_CGM = df_period_CGM.set_index("Date", drop = False)
         df_period_CGM.sort_values(['Datetime'], ascending=[True])
         df_period_CGM = df_period_CGM.set_index("Datetime", drop=False)
         df_period_CGM = df_period_CGM.sort_index()
@@ -534,10 +558,10 @@ class CGMProcessing:
             # output to static HTML file
             name_string = meal['Food Name']
             name_string = name_string.split(', ')
-            start_time = meal.Datetime
-            end_time = start_time + timedelta(hours=self.resWindow.hour)
-            df_meal_CGM = df_period_CGM.loc[start_time:end_time,:]
-            df_meal_exercise = exercise_data.loc[start_time:end_time,:]
+            determine_time = meal.Datetime
+            end_time = determine_time + timedelta(hours=self.resWindow.hour)
+            df_meal_CGM = df_period_CGM.loc[determine_time:end_time,:]
+            df_meal_exercise = exercise_data.loc[determine_time:end_time,:]
 
             try:
                 the_beginning = pd.to_datetime(df_meal_CGM.iloc[0]['Datetime']).to_pydatetime()
@@ -609,5 +633,5 @@ class CGMProcessing:
 
     # Methods to perform deeper correlational analysis
     def deep_analysis(self):
-        for analysis in self.correlations:
+        for analysis in self.analysis:
             print("deep analysis", analysis)
