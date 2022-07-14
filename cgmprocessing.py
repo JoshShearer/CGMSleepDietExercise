@@ -270,7 +270,7 @@ class CGMProcessing:
         # df_period_CGM = df_period_CGM.set_index("Datetime", drop=False)
         # df_period_CGM = df_period_CGM.sort_index()
 
-        response_meals = df_health_data.loc[(df_health_data['group'] == 'mealData') & (df_health_data['Carbs (g)'] >= 5)]
+        response_meals = df_health_data.loc[(df_health_data['group'] == 'mealData') & (df_health_data['Carbs (g)'] >= self.adjustments['minCarbs'])]
         exercise_data = df_health_data.loc[df_health_data['group'] == 'ExData']
         exercise_data = exercise_data.set_index("Datetime", drop=False)
         exercise_data = exercise_data.dropna(how='any', axis=1)
@@ -371,7 +371,7 @@ class CGMProcessing:
     
     def bg_heatmap(self):
 
-        num_days = (self.finalDay.date()-self.initialDay.date()).days + 1#inclusive of last day
+        num_days = (self.finalDay.date()-self.initialDay.date()).days + 1 #inclusive of last day
         date_list = [self.initialDay + timedelta(days=x) for x in range(num_days)]
 
 
@@ -383,20 +383,38 @@ class CGMProcessing:
         time_index = [time_list[x].strftime("%H:%M:%S") for x in range(len(time_list))]
         date_column = [date_list[x].strftime("%Y-%m-%d") for x in range(len(date_list))]
 
+        # Prep matrices for data filling.  All data necessary to fill
         df_CGM_period_max = self.healthData['CGMData'].set_index(self.healthData['CGMData']['Datetime'])
-        df_CGM_end_test = df_CGM_period_max.loc[df_CGM_period_max['Date'] == self.finalDay]
+        df_CGM_end_test = df_CGM_period_max.loc[df_CGM_period_max['Date'] == self.finalDay.date()]
+        df_CGM_initial_test = df_CGM_period_max.loc[df_CGM_period_max['Date'] == self.initialDay.date()]
+        df_CGM_period_max = df_CGM_period_max.resample('15Min', base=15, label='right')['UDT_CGMS'].max().sort_values()
         df_CGM_end_test= df_CGM_end_test.resample('15Min', base=15, label='right')['UDT_CGMS'].max()
-        df_CGM_period_max = df_CGM_period_max.resample('15Min', base=15, label='right')['UDT_CGMS'].max()
+        df_CGM_initial_test= df_CGM_initial_test.resample('15Min', base=15, label='right')['UDT_CGMS'].max()
 
+        # Fill in missing data if necessary
         if len(df_CGM_end_test.index) < len(time_index):
             for day in date_list:
-                if day == self.finalDay:
+                day = day.date()
+                if day == self.finalDay.date():
                     for index in time_list:
                         try:
-                            df_CGM_period_max[datetime.combine(self.finalDay,index.time())]
+                            df_CGM_end_test[datetime.combine(self.finalDay.date(),index.time())]
                         except:
-                            df_CGM_period_max[datetime.combine(self.finalDay,index.time())] = np.nan
-            df_CGM_period_max = df_CGM_period_max.interpolate(method='linear', limit_direction='forward')
+                            df_CGM_end_test[datetime.combine(self.finalDay.date(),index.time())] = np.nan
+            df_CGM_end_period_max = self.CGM_fill_decay(df_CGM_end_test, 'forward')
+        if len(df_CGM_initial_test.index) < len(time_index):
+            for day in date_list:
+                day = day.date()
+                if day == self.initialDay.date():
+                    for index in time_list:
+                        try:
+                            df_CGM_initial_test[datetime.combine(self.initialDay.date(),index.time())]
+                        except:
+                            df_CGM_initial_test[datetime.combine(self.initialDay.date(),index.time())] = np.nan
+            df_CGM_initial_period_max = self.CGM_fill_decay(df_CGM_initial_test.sort_index(), 'backward')
+            
+            
+
         df_meals = self.healthData['combined_Health'].loc[self.healthData['combined_Health']['group'] == 'mealData']
         df_meals = df_meals.dropna(how='all', axis=1) # drop all fully nan columns as they are not useful here
         df_dt_matrix_CGM = pd.DataFrame(0, columns=date_column, index=time_index)
@@ -405,9 +423,10 @@ class CGMProcessing:
         for date, date_array in df_dt_matrix_CGM.iteritems():
             #Remove unused time series
             if date == self.initialDay.date().strftime("%Y-%m-%d"):
+                initial_time = df_CGM_initial_period_max.sort_index().index[len(df_CGM_period_max)-1].to_pydatetime().time().strftime('%H:%M:%S')
                 date_array = date_array.loc[self.initialDay.time().strftime('%H:%M:%S'):'23:59:59']
             elif date == self.finalDay.date().strftime("%Y-%m-%d"):
-                end_time = df_CGM_period_max.sort_index().index[len(df_CGM_period_max)-1].to_pydatetime().time().strftime('%H:%M:%S')
+                end_time = df_CGM_end_period_max.sort_index().index[len(df_CGM_period_max)-1].to_pydatetime().time().strftime('%H:%M:%S')
                 date_array = date_array.loc['00:00:00':end_time,]
                 
             date_array = date_array.reset_index()
@@ -417,7 +436,6 @@ class CGMProcessing:
 
             for time_i in range(date_array.shape[0]):
                 #df of the current time period for pertinent information
-
                 current_period_time = pd.to_datetime(date_array.loc[time_i,'index'])
                 current_period_time_str = self.extract_time_from_datetime_str(str(current_period_time))
                 if time_i < date_array.shape[0]-1:
@@ -515,12 +533,39 @@ class CGMProcessing:
                         ticker=BasicTicker(desired_num_ticks=len(color_selection)-2),
                         formatter=PrintfTickFormatter(format="%d"))
 
-
         p.add_layout(color_bar, 'right')
         p.add_layout(color_bar, 'left')
         show(p) # show the plot
         print('just wait until I finish')
-
+    
+    #This function assuming blocks of missing data moving in universal direction ie front or back of df
+    def CGM_fill_decay(self, _df, _dir):
+        count = _df.isna().sum()
+        baseline = 88   #This is avg baseline Blood Glucose
+        decay_window = 8 #typical decay time is 1 hour
+        i = 0
+        if _dir == 'forward':
+            first_nan = _df.size - count
+            glucose = _df[first_nan-1]
+            decay_rate = (glucose - baseline)/decay_window
+            for index in range(count):
+                new_glucose = glucose - (decay_rate*index)
+                if new_glucose < baseline:
+                    new_glucose = baseline
+                _df[first_nan + index] = int(new_glucose)
+        else:
+            ramp = count - decay_window
+            glucose = _df[count]
+            decay_rate = (glucose - baseline)/decay_window
+            for index in range(count):
+                if index > ramp:
+                    i+=1
+                    new_glucose = baseline + (decay_rate*i)
+                    _df[index] = int(new_glucose)
+                else:
+                    _df[index] = baseline
+        return _df
+        
     def bg_multi_plot(self):
         # prepare some data
         df_health_data = self.healthData['combined_Health'].set_index("Datetime", drop=False).loc[self.initialDay:self.finalDay,:]
