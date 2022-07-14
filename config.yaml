@@ -6,29 +6,55 @@ dataFiles:
  ExData: C:\garmin\data.csv    #optional
  sleepData: C:\oura\data.csv        #optional
  mealData: C:\crono\data.csv      #required
-
+ BioData: H:\crono\data.csv     # optional 
 #date range for the CGM processing window.  Allows downloading all data instead of matching window.
 # must be in the form of Month/Day/Year
 dateRange:
- initialDay: 07/07/2020 #required
- finalDay: 09/11/2020   #required
+ initialDay: 07/07/2020 11:30 #required
+ finalDay: 09/11/2020 08:45 #required
 
 #This will save all response graphs and data
 dataAnalysis:
- calCorrection: True  #In the event that your xDrip does not correct readings after a spot calibration
- loadMealResp: True    #Glucose Response Graphs will be saved to the outputFileDirectory.  They can also be launched in the browser.
+ calCorrection: False  # In the event that your xDrip does not correct readings after a spot calibration
+ loadMealResp: True    # Glucose Response Graphs will be saved to the outputFileDirectory.  They can also be launched in the browser.
 
- sleepCorr: True       #Sleep Data will be used to show potential correlations with glucose response
- exerciseCorr: True    #Exercise Data will be used to show potential correlations with glucose response and added to meal response graphs
- biometricCorr: True   #biometricMetrics from cronometer will be used to show potential correlations with glucose response
- matplotlib: False     #A step response via matplotlib for each meal above 5 carbs
- bokeh: False           #A step response via BOKEH for each meal above 5 carbs
- heat: False            #A heat map covering the entire duration window
- multiplot: True       #A single plot with all step responses shown.
+ sleepCorr: True       # Sleep Data will be used to show potential correlations with glucose response
+ exerciseCorr: True    # Exercise Data will be used to show potential correlations with glucose response and added to meal response graphs
+ biometricCorr: True   # biometricMetrics from cronometer will be used to show potential correlations with glucose response
+ matplotlib: False     # A step response via matplotlib for each meal above 5 carbs
+ bokeh: True           # A step response via BOKEH for each meal above 5 carbs
+ heat: True            # A heat map covering the entire duration window
+ multiplot: True       # A single plot with all step responses shown.
+ biometricCorr: True   # Will produce plots showing step responses for biometrics shown below.  Must match output
+ supplementCorr: True  # Will produce plots showing step resonses for Supplements of interest shown below. String must match output
+
+Biometrics:
+  - Blood Pressure    #must match string found in biometrics.csv
+
+Supplements:
+  - creatine         #must match string found in servings/meal data
 
 adjustments:
-  calWindow: 5    #If you are adjusting the data for calibration, this will adjust and smooth values over this number of hours.
-  responseTime: 3 #window of time from meal start to measure glucose response      
+  calWindow: 5    # If you are adjusting the data for calibration, this will adjust and smooth values over this number of hours minutes and seconds.
+  responseTime: 3 # window of time from meal start to measure glucose response   
+  minCarbs: 5     # Grams of carbs threshhold for producing step response of food/meal  
 
 #This will save all response graphs and data
 outputFileDirectory: C:\CGMOutputData
+
+
+
+#directory of file including filename.  All files must be in .csv format
+dataFiles:
+ CGMData: H:\OneDrive\Documents\MiscDocs\Filing Cabinet\Health\xDrip\2022\xDripCGM.csv            # required
+ mealData: H:\OneDrive\Documents\MiscDocs\Filing Cabinet\Health\Cronometer\2022\servings.csv      # required
+ ExData: H:\OneDrive\Documents\MiscDocs\Filing Cabinet\Health\Garmin\2022\GarminActivities.csv    # optional
+ sleepData: H:\OneDrive\Documents\MiscDocs\Filing Cabinet\Health\Oura\2022\oura_sleep.csv         # optional
+ BioData: H:\OneDrive\Documents\MiscDocs\Filing Cabinet\Health\Cronometer\2022\biometrics.csv     # optional
+
+# date range for the CGM processing window.  Allows downloading all data instead of matching window.
+# must be in the form of Month/Day/Year
+dateRange:
+ initialDay: 07/11/2022 11:45 # required
+ finalDay: 07/13/2022 20:30    # required
+
