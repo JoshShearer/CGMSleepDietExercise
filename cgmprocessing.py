@@ -212,7 +212,6 @@ class CGMProcessing:
             response_meals = df_current_day.loc[(df_current_day['group'] == 'mealData') & (df_current_day['Carbs (g)'] >= self.minCarbs)]
             sleep_data = df_current_day.loc[df_current_day['group'] == 'sleepData']
             exercise_data = df_current_day.loc[df_current_day['group'] == 'ExData']
-            # exercise_data = exercise_data.set_index("Datetime", drop=False)
             response_meals = response_meals.dropna(how='any', axis=1)
             sleep_data = sleep_data.dropna(how='any', axis=1)
             exercise_data = exercise_data.dropna(how='any', axis=1)
@@ -238,7 +237,6 @@ class CGMProcessing:
                 title = (str(df_CGM_response['Date'].values[0]) + " Time (Day)")
 
                 df_CGM_response.plot(x='Time', y='UDT_CGMS', ax=axes[index//2,1 if index % 2 else 0], subplots=True)
-
 
                 if not df_exercise.empty:
                     for workout in df_exercise.iterrows():
@@ -266,9 +264,6 @@ class CGMProcessing:
         df_health_data.sort_values(['Datetime'], ascending=[True])
         df_health_data = df_health_data.set_index("Datetime", drop = False)
         df_period_CGM = self.healthData['CGMData'].loc[self.initialDay.date():self.finalDay.date(),:]
-        # df_period_CGM.sort_values(['Datetime'], ascending=[True])
-        # df_period_CGM = df_period_CGM.set_index("Datetime", drop=False)
-        # df_period_CGM = df_period_CGM.sort_index()
 
         response_meals = df_health_data.loc[(df_health_data['group'] == 'mealData') & (df_health_data['Carbs (g)'] >= self.adjustments['minCarbs'])]
         exercise_data = df_health_data.loc[df_health_data['group'] == 'ExData']
@@ -374,7 +369,6 @@ class CGMProcessing:
         num_days = (self.finalDay.date()-self.initialDay.date()).days + 1 #inclusive of last day
         date_list = [self.initialDay + timedelta(days=x) for x in range(num_days)]
 
-
         #create an array for all the dates and times to
         time_index = []
         min_time = datetime.min.time()
@@ -412,8 +406,11 @@ class CGMProcessing:
                         except:
                             df_CGM_initial_test[datetime.combine(self.initialDay.date(),index.time())] = np.nan
             df_CGM_initial_period_max = self.CGM_fill_decay(df_CGM_initial_test.sort_index(), 'backward')
-            
-            
+            df_CGM_period_max = df_CGM_period_max.sort_values().loc[(self.initialDay + timedelta(days=1)).strftime("%Y-%m-%d"):(self.finalDay - timedelta(days=1)).strftime("%Y-%m-%d")]
+            df_CGM_period_max = pd.concat([df_CGM_period_max, df_CGM_end_period_max, df_CGM_initial_period_max])
+            #Remove redundant time indices
+            idx = np.unique( df_CGM_period_max.index.values, return_index = True )[1]
+            df_CGM_period_max = df_CGM_period_max.iloc[idx]
 
         df_meals = self.healthData['combined_Health'].loc[self.healthData['combined_Health']['group'] == 'mealData']
         df_meals = df_meals.dropna(how='all', axis=1) # drop all fully nan columns as they are not useful here
@@ -421,13 +418,6 @@ class CGMProcessing:
         df_dt_matrix_meals = pd.DataFrame(0, columns=date_column, index=time_index)
         
         for date, date_array in df_dt_matrix_CGM.iteritems():
-            #Remove unused time series
-            if date == self.initialDay.date().strftime("%Y-%m-%d"):
-                initial_time = df_CGM_initial_period_max.sort_index().index[len(df_CGM_period_max)-1].to_pydatetime().time().strftime('%H:%M:%S')
-                date_array = date_array.loc[self.initialDay.time().strftime('%H:%M:%S'):'23:59:59']
-            elif date == self.finalDay.date().strftime("%Y-%m-%d"):
-                end_time = df_CGM_end_period_max.sort_index().index[len(df_CGM_period_max)-1].to_pydatetime().time().strftime('%H:%M:%S')
-                date_array = date_array.loc['00:00:00':end_time,]
                 
             date_array = date_array.reset_index()
             period_date = datetime.strptime(date, "%Y-%m-%d")
@@ -467,8 +457,6 @@ class CGMProcessing:
 
                 previous_dt = current_dt
             print('Day ' + date + ' finished')
-        # df_dt_matrix_CGM = df_dt_matrix_CGM.reset_index()
-        df_dt_matrix_CGM = df_dt_matrix_CGM.interpolate(method='linear', limit_direction='forward', axis=1)#method='polynomial', order=2)
 
         print("wait!")
 
@@ -673,8 +661,6 @@ class CGMProcessing:
         show(p)
         df_data_summary.to_csv(self.output + os.path.sep + 'MealResponse.csv', index=False)
         print('just wait until I finish')
-
-
 
     # Methods to perform deeper correlational analysis
     def deep_analysis(self):
