@@ -129,55 +129,55 @@ class CGMProcessing:
             self.healthData['CGMData'] = self.healthData['CGMData'].set_index("Date", drop=False)
         return
 
-    def bg_calibration_correction(self):
-    #Correct BG Data based on the calibration data
-        #Data adjusted by calibrated difference until 12 hours after previous calibration
-        df_calibration = self.healthData['CGMData'].dropna(how='any', subset=['BG_LEVEL'])
-        df_last_calibration = None
-        cal_index=0
-        df_BG = self.healthData['CGMData'].sort_index()
-        for cal_time, calibration in df_calibration.iterrows():
-            if cal_index%2:
-                #calculate the adjustment =>  the difference between the most recent BG measurement and the calibration
-                #calculate the time frame for adjustments => calibrations considered solid for 10 hours after calibration
-                #find all BG values in the time frame and adjust by difference
-                cal_period_end = calibration.Datetime.to_pydatetime()
-                cal_period_end = cal_period_end - timedelta(minutes=15)
-                cal_period_end_str = self.extract_time_from_datetime_str(str(pd.to_datetime(cal_period_end)))
-                cal_period_start = cal_period_end - timedelta(minutes=20)
-                cal_period_start_str = self.extract_time_from_datetime_str(str(pd.to_datetime(cal_period_start)))
-                cal_level = calibration.BG_LEVEL
-                cal_date = calibration.Date
-                bg_start = cal_period_end - timedelta(hours=5)
-                bg_end = cal_period_start + timedelta(hours=5)
-                bg_start_str = str(pd.to_datetime(bg_start))
-                bg_end_str = str(pd.to_datetime(bg_end))
-                # need to capture the day before and after for midnight crossover errors
-                df_BG_period = df_BG.loc[bg_start:bg_end]
-                df_BG_period = df_BG_period[df_BG_period['UDT_CGMS'].notna()]
-                mean = df_BG_period.loc[cal_period_start:cal_period_end].mean()
-                try:
-                    mean = int(mean.mean())
-                except:
-                    print('insufficient CGM data, expanding period')
-                    mean = df_BG_period.mean()
-                    mean = int(mean.mean())
-                bg_adjustment = cal_level - mean
+    # def bg_calibration_correction(self):
+    # #Correct BG Data based on the calibration data
+    #     #Data adjusted by calibrated difference until 12 hours after previous calibration
+    #     df_calibration = self.healthData['CGMData'].dropna(how='any', subset=['BG_LEVEL'])
+    #     df_last_calibration = None
+    #     cal_index=0
+    #     df_BG = self.healthData['CGMData'].sort_index()
+    #     for cal_time, calibration in df_calibration.iterrows():
+    #         if cal_index%2:
+    #             #calculate the adjustment =>  the difference between the most recent BG measurement and the calibration
+    #             #calculate the time frame for adjustments => calibrations considered solid for 10 hours after calibration
+    #             #find all BG values in the time frame and adjust by difference
+    #             cal_period_end = calibration.Datetime.to_pydatetime()
+    #             cal_period_end = cal_period_end - timedelta(minutes=15)
+    #             cal_period_end_str = self.extract_time_from_datetime_str(str(pd.to_datetime(cal_period_end)))
+    #             cal_period_start = cal_period_end - timedelta(minutes=20)
+    #             cal_period_start_str = self.extract_time_from_datetime_str(str(pd.to_datetime(cal_period_start)))
+    #             cal_level = calibration.BG_LEVEL
+    #             cal_date = calibration.Date
+    #             bg_start = cal_period_end - timedelta(hours=5)
+    #             bg_end = cal_period_start + timedelta(hours=5)
+    #             bg_start_str = str(pd.to_datetime(bg_start))
+    #             bg_end_str = str(pd.to_datetime(bg_end))
+    #             # need to capture the day before and after for midnight crossover errors
+    #             df_BG_period = df_BG.loc[bg_start:bg_end]
+    #             df_BG_period = df_BG_period[df_BG_period['UDT_CGMS'].notna()]
+    #             mean = df_BG_period.loc[cal_period_start:cal_period_end].mean()
+    #             try:
+    #                 mean = int(mean.mean())
+    #             except:
+    #                 print('insufficient CGM data, expanding period')
+    #                 mean = df_BG_period.mean()
+    #                 mean = int(mean.mean())
+    #             bg_adjustment = cal_level - mean
 
-                period_end_str = cal_period_end_str
-                period_start = cal_period_end - timedelta(hours=self.calWindow.hour)
-                period_start_str = self.extract_time_from_datetime_str(str(pd.to_datetime(period_start)))
-                df_BG_adjust = df_BG_period.between_time(period_start_str, period_end_str)
-                i = 0
-                for index, row in df_BG_adjust.iterrows():
-                    adj_factor = bg_adjustment*(i/len(df_BG_adjust))
-                    new_BG = int(row['UDT_CGMS'] + adj_factor)
-                    df_BG.loc[row['Datetime'],'UDT_CGMS'] = new_BG
-                    i += 1
-            cal_index += 1
-        df_BG = df_BG.dropna(how='any', subset=['UDT_CGMS'])
-        print('Calibration Adjustments Completed')
-        return df_BG
+    #             period_end_str = cal_period_end_str
+    #             period_start = cal_period_end - timedelta(hours=self.calWindow.hour)
+    #             period_start_str = self.extract_time_from_datetime_str(str(pd.to_datetime(period_start)))
+    #             df_BG_adjust = df_BG_period.between_time(period_start_str, period_end_str)
+    #             i = 0
+    #             for index, row in df_BG_adjust.iterrows():
+    #                 adj_factor = bg_adjustment*(i/len(df_BG_adjust))
+    #                 new_BG = int(row['UDT_CGMS'] + adj_factor)
+    #                 df_BG.loc[row['Datetime'],'UDT_CGMS'] = new_BG
+    #                 i += 1
+    #         cal_index += 1
+    #     df_BG = df_BG.dropna(how='any', subset=['UDT_CGMS'])
+    #     print('Calibration Adjustments Completed')
+    #     return df_BG
 
     def extract_time_from_datetime_str(self, day):
         # String should be of the form "2020-02-02 00:00:00"
@@ -189,8 +189,10 @@ class CGMProcessing:
     def process_mealData(self):
         if self.analysis['matplotlib']:
             self.bg_food_response_matplot()
-        if self.analysis['bokeh']:    
+        if self.analysis['mealStep']:    
             self.bg_food_response_bokeh()
+        if self.analysis['exerciseStep']:    
+            self.bg_exercise_response_bokeh()
         if self.analysis['heat']:    
             self.bg_heatmap()
         if self.analysis['multiplot']:    
@@ -258,29 +260,29 @@ class CGMProcessing:
             current_date = current_date + timedelta(days=1)
         return
 
-    def bg_food_response_bokeh(self):
+    def bg_exercise_response_bokeh(self):
         df_health_data = self.healthData['combined_Health'].set_index("Datetime", drop=False).loc[self.initialDay:self.finalDay,:]
         df_health_data = df_health_data.set_index("Date", drop=False) 
         df_health_data.sort_values(['Datetime'], ascending=[True])
         df_health_data = df_health_data.set_index("Datetime", drop = False)
         df_period_CGM = self.healthData['CGMData'].loc[self.initialDay.date():self.finalDay.date(),:]
 
-        response_meals = df_health_data.loc[(df_health_data['group'] == 'mealData') & (df_health_data['Carbs (g)'] >= self.adjustments['minCarbs'])]
+        # response_meals = df_health_data.loc[(df_health_data['group'] == 'mealData') & (df_health_data['Carbs (g)'] >= self.adjustments['minCarbs'])]
         exercise_data = df_health_data.loc[df_health_data['group'] == 'ExData']
         exercise_data = exercise_data.set_index("Datetime", drop=False)
         exercise_data = exercise_data.dropna(how='any', axis=1)
-        response_meals = response_meals.dropna(how='any', axis=1)
-        response_meals = response_meals.sort_values(['Carbs (g)'], ascending=[False])
+        # response_meals = response_meals.dropna(how='any', axis=1)
+        # response_meals = response_meals.sort_values(['Carbs (g)'], ascending=[False])
 
-        dir_path = (self.output + os.path.sep + 'bokeh_step_responses')
+        dir_path = (self.output + os.path.sep + 'bokeh_step_responses_exercise')
         if not os.path.isdir(dir_path):
             os.mkdir(dir_path)
-        for time, meal in response_meals.iterrows():
+        for time, workout in exercise_data.iterrows():
             # output to static HTML file
-            name_string = meal['Food Name']
-            name_string = name_string.split(', ')
+            name_string = workout['Title']
+            name_string = name_string.replace(' ', '_')
             
-            output_file(dir_path + os.path.sep + name_string[0] + '.html')
+            output_file(dir_path + os.path.sep + name_string + '(' +time.strftime("%Y_%m_%d") + ')' +'.html')
 
             # create a new plot
             p = figure(
@@ -291,38 +293,36 @@ class CGMProcessing:
 
 
             # add some renderers
-            determine_time = meal.Datetime
-            end_time = determine_time + timedelta(hours=self.resWindow.hour)
-            df_meal_CGM = df_period_CGM.loc[determine_time:end_time,:]
-            df_meal_exercise = exercise_data.loc[determine_time:end_time,:]
+            determine_time = workout.Datetime - timedelta(minutes=30)
+            end_time = determine_time + timedelta(hours=self.resWindow.hour) + timedelta(hours=1)
+            df_exercise_cgm = df_period_CGM.loc[determine_time:end_time,:]
+            # df_meal_exercise = exercise_data.loc[determine_time:end_time,:]
             try:
-                the_beginning = pd.to_datetime(df_meal_CGM.iloc[0]['Datetime']).to_pydatetime()
+                the_beginning = pd.to_datetime(df_exercise_cgm.iloc[0]['Datetime']).to_pydatetime()
             except: #Missing Data at times due to lack of sensor
-                print('Data Failure, abandoning ' + meal['Food Name'] + ' Date => ' + meal['Date'].strftime("%Y-%m-%d"))
+                print('Data Failure, abandoning ' + workout['Title'] + ' Date => ' + workout['Date'].strftime("%Y-%m-%d"))
                 continue
             the_beginning = the_beginning.time()
-            df_meal_CGM["Response Time"] = df_meal_CGM.Datetime - timedelta(hours=the_beginning.hour, minutes=the_beginning.minute, seconds=the_beginning.second)
-            df_meal_CGM["Response Time"] = df_meal_CGM["Response Time"].dt.time
-            df_meal_CGM["ZeroedCGMS"] = df_meal_CGM.UDT_CGMS - df_meal_CGM.iloc[0]["UDT_CGMS"]
-            p.line(df_meal_CGM["Datetime"], df_meal_CGM.UDT_CGMS, line_width=4, line_color="black")
+            df_exercise_cgm["Response Time"] = df_exercise_cgm.Datetime - timedelta(hours=the_beginning.hour, minutes=the_beginning.minute, seconds=the_beginning.second)
+            df_exercise_cgm["Response Time"] = df_exercise_cgm["Response Time"].dt.time
+            df_exercise_cgm["ZeroedCGMS"] = df_exercise_cgm.UDT_CGMS - df_exercise_cgm.iloc[0]["UDT_CGMS"]
+            p.line(df_exercise_cgm["Datetime"], df_exercise_cgm.UDT_CGMS, line_width=4, line_color="black")
 
-            if not df_meal_exercise.empty:
-                for time, workout in df_meal_exercise.iterrows():
-                    activity_info = workout
-                    activity_time = pd.to_datetime(activity_info['Activity Time'])
-                    activity_time = activity_time.to_pydatetime()
-                    determine_time = activity_info.Datetime.to_pydatetime()
-                    end_time = determine_time + timedelta(hours=activity_time.hour, minutes=activity_time.minute)
-                    exercise_box = BoxAnnotation(left=determine_time, right=end_time, fill_alpha=0.4, fill_color='blue')
-                    label5 = Label(x=300, y=int(df_meal_CGM.UDT_CGMS.min()*1.2), x_units='screen', text="Activity = " + str(workout.Title), render_mode='css',
-                        border_line_color='black', border_line_alpha=1.0,
-                        background_fill_color='white', background_fill_alpha=1.0)
-                    label6 = Label(x=300, y=int(df_meal_CGM.UDT_CGMS.min()*1.1), x_units='screen', text='Calories = ' + str(workout.Calories), render_mode='css',
-                        border_line_color='black', border_line_alpha=1.0,
-                        background_fill_color='white', background_fill_alpha=1.0)
-                    p.add_layout(exercise_box)
-                    p.add_layout(label5)
-                    p.add_layout(label6)
+            activity_info = workout
+            activity_time = pd.to_datetime(activity_info['Activity Time'])
+            activity_time = activity_time.to_pydatetime()
+            determine_time = activity_info.Datetime.to_pydatetime()
+            end_time = determine_time + timedelta(hours=activity_time.hour, minutes=activity_time.minute)
+            exercise_box = BoxAnnotation(left=determine_time, right=end_time, fill_alpha=0.4, fill_color='blue')
+            label1 = Label(x=300, y=int(df_exercise_cgm.UDT_CGMS.min()*1.2), x_units='screen', text="Activity = " + str(workout.Title), render_mode='css',
+                border_line_color='black', border_line_alpha=1.0,
+                background_fill_color='white', background_fill_alpha=1.0)
+            label2 = Label(x=300, y=int(df_exercise_cgm.UDT_CGMS.min()*1.1), x_units='screen', text='Calories = ' + str(workout.Calories), render_mode='css',
+                border_line_color='black', border_line_alpha=1.0,
+                background_fill_color='white', background_fill_alpha=1.0)
+            p.add_layout(exercise_box)
+            p.add_layout(label1)
+            p.add_layout(label2)
             # show the results
             low_box = BoxAnnotation(top=70, fill_alpha=0.1, fill_color='red')
             mid_box = BoxAnnotation(bottom=70, top=140, fill_alpha=0.1, fill_color='green')
@@ -332,37 +332,29 @@ class CGMProcessing:
             p.add_layout(mid_box)
             p.add_layout(high_box)
 
-            delta = df_meal_CGM.UDT_CGMS.max() - df_meal_CGM.UDT_CGMS[0]
-            height = int(df_meal_CGM.UDT_CGMS.max()*.95)
-            height2 = int(df_meal_CGM.UDT_CGMS.max()*.93)
-            height3 = int(df_meal_CGM.UDT_CGMS.max()*.90)
-            height4 = int(df_meal_CGM.UDT_CGMS.max()*.87)
-            label1 = Label(x=70, y=height, x_units='screen', text="Glucose Delta = " + str(delta), render_mode='css',
+            delta = df_exercise_cgm.UDT_CGMS.max() - df_exercise_cgm.UDT_CGMS[0]
+            height = int(df_exercise_cgm.UDT_CGMS.max()*.95)
+            height2 = int(df_exercise_cgm.UDT_CGMS.max()*.93)
+            label3 = Label(x=70, y=height, x_units='screen', text="Glucose Delta = -" + str(delta), render_mode='css',
             border_line_color='black', border_line_alpha=1.0,
             background_fill_color='white', background_fill_alpha=1.0)
-            label2 = Label(x=70, y=height2, x_units='screen', text='Peak = ' + str(df_meal_CGM.UDT_CGMS.max()) + ' mmol/dl', render_mode='css',
+            label4 = Label(x=70, y=height2, x_units='screen', text='Peak = ' + str(df_exercise_cgm.UDT_CGMS.max()) + ' mmol/dl', render_mode='css',
             border_line_color='black', border_line_alpha=1.0,
             background_fill_color='white', background_fill_alpha=1.0)
-            label3 = Label(x=70, y=height3, x_units='screen', text='Total Carbs = ' + str(meal['Carbs (g)']) + ' g', render_mode='css',
-            border_line_color='black', border_line_alpha=1.0,
-            background_fill_color='white', background_fill_alpha=1.0)
-            label4 = Label(x=70, y=height4, x_units='screen', text='Total Calories = ' + str(meal['Energy (kcal)']), render_mode='css',
-            border_line_color='black', border_line_alpha=1.0,
-            background_fill_color='white', background_fill_alpha=1.0)
-
-            p.add_layout(label1)
-            p.add_layout(label2)
+            
             p.add_layout(label3)
             p.add_layout(label4)
-            p.title.text = "Glucose Response of " + meal['Food Name']
+            p.title.text = "Glucose Response of " + workout['Title']
             p.title.align = "center"
             p.xgrid[0].grid_line_color=None
             p.ygrid[0].grid_line_alpha=0.5
-            p.xaxis.axis_label = 'Time (' + str(meal['Date']) + ')'
+            p.xaxis.axis_label = 'Time (' + str(workout['Date']) + ')'
             p.yaxis.axis_label = 'mmol/dl'
             show(p)
             sleep(1)
         print('just wait until I finish')
+    
+    
     
     def bg_heatmap(self):
 
@@ -462,6 +454,111 @@ class CGMProcessing:
 
         total_days = df_dt_matrix_CGM.shape[1]
 
+    def bg_food_response_bokeh(self):
+        df_health_data = self.healthData['combined_Health'].set_index("Datetime", drop=False).loc[self.initialDay:self.finalDay,:]
+        df_health_data = df_health_data.set_index("Date", drop=False) 
+        df_health_data.sort_values(['Datetime'], ascending=[True])
+        df_health_data = df_health_data.set_index("Datetime", drop = False)
+        df_period_CGM = self.healthData['CGMData'].loc[self.initialDay.date():self.finalDay.date(),:]
+
+        response_meals = df_health_data.loc[(df_health_data['group'] == 'mealData') & (df_health_data['Carbs (g)'] >= self.adjustments['minCarbs'])]
+        exercise_data = df_health_data.loc[df_health_data['group'] == 'ExData']
+        exercise_data = exercise_data.set_index("Datetime", drop=False)
+        exercise_data = exercise_data.dropna(how='any', axis=1)
+        response_meals = response_meals.dropna(how='any', axis=1)
+        response_meals = response_meals.sort_values(['Carbs (g)'], ascending=[False])
+
+        dir_path = (self.output + os.path.sep + 'bokeh_step_responses_meals')
+        if not os.path.isdir(dir_path):
+            os.mkdir(dir_path)
+        for time, meal in response_meals.iterrows():
+            # output to static HTML file
+            name_string = meal['Food Name']
+            name_string = name_string.replace(',',)
+            
+            output_file(dir_path + os.path.sep + name_string + '(' +time.strftime("%Y_%m_%d") + ')' + '.html')
+
+            # create a new plot
+            p = figure(
+            tools="pan,box_zoom,reset,save",
+            title="log axis example", x_axis_type='datetime',
+            x_axis_label='Response', y_axis_label='Glucose'
+            )
+
+
+            # add some renderers
+            determine_time = meal.Datetime
+            end_time = determine_time + timedelta(hours=self.resWindow.hour)
+            df_meal_CGM = df_period_CGM.loc[determine_time:end_time,:]
+            df_meal_exercise = exercise_data.loc[determine_time:end_time,:]
+            try:
+                the_beginning = pd.to_datetime(df_meal_CGM.iloc[0]['Datetime']).to_pydatetime()
+            except: #Missing Data at times due to lack of sensor
+                print('Data Failure, abandoning ' + meal['Food Name'] + ' Date => ' + meal['Date'].strftime("%Y-%m-%d"))
+                continue
+            the_beginning = the_beginning.time()
+            df_meal_CGM["Response Time"] = df_meal_CGM.Datetime - timedelta(hours=the_beginning.hour, minutes=the_beginning.minute, seconds=the_beginning.second)
+            df_meal_CGM["Response Time"] = df_meal_CGM["Response Time"].dt.time
+            df_meal_CGM["ZeroedCGMS"] = df_meal_CGM.UDT_CGMS - df_meal_CGM.iloc[0]["UDT_CGMS"]
+            p.line(df_meal_CGM["Datetime"], df_meal_CGM.UDT_CGMS, line_width=4, line_color="black")
+
+            if not df_meal_exercise.empty:
+                for time, workout in df_meal_exercise.iterrows():
+                    activity_info = workout
+                    activity_time = pd.to_datetime(activity_info['Activity Time'])
+                    activity_time = activity_time.to_pydatetime()
+                    determine_time = activity_info.Datetime.to_pydatetime()
+                    end_time = determine_time + timedelta(hours=activity_time.hour, minutes=activity_time.minute)
+                    exercise_box = BoxAnnotation(left=determine_time, right=end_time, fill_alpha=0.4, fill_color='blue')
+                    label5 = Label(x=300, y=int(df_meal_CGM.UDT_CGMS.min()*1.2), x_units='screen', text="Activity = " + str(workout.Title), render_mode='css',
+                        border_line_color='black', border_line_alpha=1.0,
+                        background_fill_color='white', background_fill_alpha=1.0)
+                    label6 = Label(x=300, y=int(df_meal_CGM.UDT_CGMS.min()*1.1), x_units='screen', text='Calories = ' + str(workout.Calories), render_mode='css',
+                        border_line_color='black', border_line_alpha=1.0,
+                        background_fill_color='white', background_fill_alpha=1.0)
+                    p.add_layout(exercise_box)
+                    p.add_layout(label5)
+                    p.add_layout(label6)
+            # show the results
+            low_box = BoxAnnotation(top=70, fill_alpha=0.1, fill_color='red')
+            mid_box = BoxAnnotation(bottom=70, top=140, fill_alpha=0.1, fill_color='green')
+            high_box = BoxAnnotation(bottom=140, fill_alpha=0.1, fill_color='red')
+
+            p.add_layout(low_box)
+            p.add_layout(mid_box)
+            p.add_layout(high_box)
+
+            delta = df_meal_CGM.UDT_CGMS.max() - df_meal_CGM.UDT_CGMS[0]
+            height = int(df_meal_CGM.UDT_CGMS.max()*.95)
+            height2 = int(df_meal_CGM.UDT_CGMS.max()*.93)
+            height3 = int(df_meal_CGM.UDT_CGMS.max()*.90)
+            height4 = int(df_meal_CGM.UDT_CGMS.max()*.87)
+            label1 = Label(x=70, y=height, x_units='screen', text="Glucose Delta = " + str(delta), render_mode='css',
+            border_line_color='black', border_line_alpha=1.0,
+            background_fill_color='white', background_fill_alpha=1.0)
+            label2 = Label(x=70, y=height2, x_units='screen', text='Peak = ' + str(df_meal_CGM.UDT_CGMS.max()) + ' mmol/dl', render_mode='css',
+            border_line_color='black', border_line_alpha=1.0,
+            background_fill_color='white', background_fill_alpha=1.0)
+            label3 = Label(x=70, y=height3, x_units='screen', text='Total Carbs = ' + str(meal['Carbs (g)']) + ' g', render_mode='css',
+            border_line_color='black', border_line_alpha=1.0,
+            background_fill_color='white', background_fill_alpha=1.0)
+            label4 = Label(x=70, y=height4, x_units='screen', text='Total Calories = ' + str(meal['Energy (kcal)']), render_mode='css',
+            border_line_color='black', border_line_alpha=1.0,
+            background_fill_color='white', background_fill_alpha=1.0)
+
+            p.add_layout(label1)
+            p.add_layout(label2)
+            p.add_layout(label3)
+            p.add_layout(label4)
+            p.title.text = "Glucose Response of " + meal['Food Name']
+            p.title.align = "center"
+            p.xgrid[0].grid_line_color=None
+            p.ygrid[0].grid_line_alpha=0.5
+            p.xaxis.axis_label = 'Time (' + str(meal['Date']) + ')'
+            p.yaxis.axis_label = 'mmol/dl'
+            show(p)
+            sleep(1)
+        print('just wait until I finish')
 
         xname = [[date_column[j] for i in range(len(time_index))] for j in range(len(date_column))]
         yname = [[time_index[i] for i in range(len(time_index))] for j in range(len(date_column))]
