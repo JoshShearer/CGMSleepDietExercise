@@ -1,13 +1,16 @@
 import os
 import pandas as pd
 import numpy as np
+from humanfriendly import format_timespan
 import re
+from scipy.signal import savgol_filter 
 from datetime import date, time, datetime, timedelta
 from time import sleep
 from matplotlib import pyplot as plt
 import itertools
+from bokeh.layouts import column, row
 from bokeh.io import curdoc, show
-from bokeh.models import Label, Legend, LegendItem, LabelSet, Span, BoxAnnotation, ColumnDataSource, ColorBar, BasicTicker,  PrintfTickFormatter, LinearColorMapper, Range1d, Grid, LinearAxis, MultiLine, Plot, layouts
+from bokeh.models import Label, Legend, PreText, LegendItem, LabelSet, Span, BoxAnnotation, ColumnDataSource, ColorBar, BasicTicker,  PrintfTickFormatter, LinearColorMapper, Range1d, Grid, LinearAxis, MultiLine, Plot, layouts
 from bokeh.plotting import figure, output_file, show
 from bokeh.sampledata.les_mis import data
 from bokeh.transform import transform
@@ -50,11 +53,16 @@ class CGMProcessing:
     def open_files(self, file, key):
         if key == 'CGMData':
             data = pd.read_csv(file, sep=';')
+            data = data.dropna(how='any', subset=['UDT_CGMS'])
         else:
             data = pd.read_csv(file,encoding = "ISO-8859-1")
         if key == 'ExData':
-           data = data.rename(columns={'Time': 'Activity Time'})
-        data = data.rename(columns={'DAY' or 'Day': 'Date'})
+            data = data.rename(columns={'Time': 'Activity Time'})
+        if key == "sleepData":
+            #convert sleep times from str to DT
+            data['Bedtime Start'] = pd.to_datetime(data['Bedtime Start'], format=('%Y-%m-%dT%H:%M:%S-07:00'))
+            data['Bedtime End'] = pd.to_datetime(data['Bedtime End'], format=('%Y-%m-%dT%H:%M:%S-07:00'))
+        data = data.rename(columns={'DAY' or 'Day' or 'date': 'Date'})
         data = data.rename(columns={'TIME': 'Time'})
         data = self.clean_date_column(data, key)
         data = self.clean_time_column(data)
@@ -86,11 +94,12 @@ class CGMProcessing:
                 del df['str_split']
                 split = True
         if key == 'CGMData':
-            df['Date'] = pd.to_datetime(df['Date'], format='%d-%m-%Y', exact=True)
+            try:
+                df['Date'] = pd.to_datetime(df['Date'], format='%d-%m-%Y', exact=True)
+            except:
+                df['Date'] = pd.to_datetime(df['Date'], infer_datetime_format=True)
         else:
             df['Date'] = pd.to_datetime(df['Date'], infer_datetime_format=True)
-        df['Date'] = df['Date'].dt.date
-
         return df
 
     def clean_time_column(self, df):
@@ -115,7 +124,7 @@ class CGMProcessing:
         dfs = []
         for data in self.healthData:
             if data != 'CGMData':
-                self.healthData[data]['group'] = data
+                self.healthData[data]['data_set'] = data
                 dfs.append(self.healthData[data])
             
         self.healthData['combined_Health'] = pd.concat(dfs, ignore_index=True)
@@ -129,62 +138,26 @@ class CGMProcessing:
             self.healthData['CGMData'] = self.healthData['CGMData'].set_index("Date", drop=False)
         return
 
-    # def bg_calibration_correction(self):
-    # #Correct BG Data based on the calibration data
-    #     #Data adjusted by calibrated difference until 12 hours after previous calibration
-    #     df_calibration = self.healthData['CGMData'].dropna(how='any', subset=['BG_LEVEL'])
-    #     df_last_calibration = None
-    #     cal_index=0
-    #     df_BG = self.healthData['CGMData'].sort_index()
-    #     for cal_time, calibration in df_calibration.iterrows():
-    #         if cal_index%2:
-    #             #calculate the adjustment =>  the difference between the most recent BG measurement and the calibration
-    #             #calculate the time frame for adjustments => calibrations considered solid for 10 hours after calibration
-    #             #find all BG values in the time frame and adjust by difference
-    #             cal_period_end = calibration.Datetime.to_pydatetime()
-    #             cal_period_end = cal_period_end - timedelta(minutes=15)
-    #             cal_period_end_str = self.extract_time_from_datetime_str(str(pd.to_datetime(cal_period_end)))
-    #             cal_period_start = cal_period_end - timedelta(minutes=20)
-    #             cal_period_start_str = self.extract_time_from_datetime_str(str(pd.to_datetime(cal_period_start)))
-    #             cal_level = calibration.BG_LEVEL
-    #             cal_date = calibration.Date
-    #             bg_start = cal_period_end - timedelta(hours=5)
-    #             bg_end = cal_period_start + timedelta(hours=5)
-    #             bg_start_str = str(pd.to_datetime(bg_start))
-    #             bg_end_str = str(pd.to_datetime(bg_end))
-    #             # need to capture the day before and after for midnight crossover errors
-    #             df_BG_period = df_BG.loc[bg_start:bg_end]
-    #             df_BG_period = df_BG_period[df_BG_period['UDT_CGMS'].notna()]
-    #             mean = df_BG_period.loc[cal_period_start:cal_period_end].mean()
-    #             try:
-    #                 mean = int(mean.mean())
-    #             except:
-    #                 print('insufficient CGM data, expanding period')
-    #                 mean = df_BG_period.mean()
-    #                 mean = int(mean.mean())
-    #             bg_adjustment = cal_level - mean
-
-    #             period_end_str = cal_period_end_str
-    #             period_start = cal_period_end - timedelta(hours=self.calWindow.hour)
-    #             period_start_str = self.extract_time_from_datetime_str(str(pd.to_datetime(period_start)))
-    #             df_BG_adjust = df_BG_period.between_time(period_start_str, period_end_str)
-    #             i = 0
-    #             for index, row in df_BG_adjust.iterrows():
-    #                 adj_factor = bg_adjustment*(i/len(df_BG_adjust))
-    #                 new_BG = int(row['UDT_CGMS'] + adj_factor)
-    #                 df_BG.loc[row['Datetime'],'UDT_CGMS'] = new_BG
-    #                 i += 1
-    #         cal_index += 1
-    #     df_BG = df_BG.dropna(how='any', subset=['UDT_CGMS'])
-    #     print('Calibration Adjustments Completed')
-    #     return df_BG
-
     def extract_time_from_datetime_str(self, day):
         # String should be of the form "2020-02-02 00:00:00"
         day = day.split(' ')
         time = day[1]
 
         return time
+    
+    def catch_dt_missing(self, df):
+        try:
+            df.set_index("Datetime", drop=False).sort_values(['Datetime'], ascending=[True])
+        except:
+            print("already sorted")
+        initial_time = df.iloc[[0]].Datetime
+        final_time = df.iloc[[-1]]['Datetime']
+        period = self.adjustments['samplePeriod']
+        # fart = final_time - initial time
+        # time_list = [initial_time + timedelta(minutes=x*period) for x in range(p_range)]
+        # df_time_reference = 
+        
+        return df
         
     def process_mealData(self):
         if self.analysis['matplotlib']:
@@ -197,8 +170,127 @@ class CGMProcessing:
             self.bg_heatmap()
         if self.analysis['multiplot']:    
             self.bg_multi_plot()
-
+        if self.analysis['dayOverview']:
+            self.bg_daily_overview()
+        
         return
+    
+    def bg_daily_overview(self):
+        df_health_data = self.healthData['combined_Health'].set_index("Datetime", drop=False).loc[self.initialDay:self.finalDay,:]
+        df_health_data = df_health_data.set_index("Date", drop=False) 
+        df_health_data.sort_values(['Datetime'], ascending=[True])
+        df_health_data = df_health_data.set_index("Datetime", drop = False)
+        df_period_CGM = self.healthData['CGMData'].loc[self.initialDay:self.finalDay,:].set_index(["Datetime"], drop=False)
+        # df_period_CGM = df_period_CGM.interpolate(method='linear', limit_direction='both')
+
+        df_response_meals = df_health_data.loc[(df_health_data['data_set'] == 'mealData') & (df_health_data['Carbs (g)'] >= self.adjustments['minCarbs'])]
+        df_response_meals = df_response_meals.dropna(how='any', axis=1)
+        df_response_meals = df_response_meals.sort_values(['Net Carbs (g)'], ascending=[False])
+        
+        df_exercise_data = df_health_data.loc[df_health_data['data_set'] == 'ExData']
+        df_exercise_data = df_exercise_data.dropna(how='any', axis=1).set_index(['Datetime'], drop=False)
+        
+        df_sleep_data = self.healthData['sleepData'].set_index("Datetime", drop=False).loc[self.initialDay.date():self.finalDay.date(),:]
+        df_sleep_data = df_sleep_data.dropna(how='any', axis=1)
+        
+        #create an array for all the dates
+        num_days = (self.finalDay.date()-self.initialDay.date()).days + 1 #inclusive of last day
+        date_list = [self.initialDay + timedelta(days=x) for x in range(num_days)]
+
+        dates = [date_list[x].strftime("%Y-%m-%d") for x in range(len(date_list))]
+        
+        dir_path = (self.output + os.path.sep + 'bokeh_daily_overview')
+        if not os.path.isdir(dir_path):
+            os.mkdir(dir_path)
+            
+        for date in dates:
+            # output to static HTML file
+            output_file(dir_path + os.path.sep + 'Daily Overview ' + '(' + date + ')' + '.html')
+            columns = []
+            # create a new plot
+            p = figure(
+            tools="pan,box_zoom,reset,save",
+            title="log axis example", x_axis_type='datetime',
+            x_axis_label='Response', y_axis_label='Glucose'
+            )
+            try:
+                df_date_exercise = df_exercise_data[df_exercise_data['Date'].dt.strftime("%Y-%m-%d") == date]
+                
+                if not df_date_exercise.empty:                
+                    exercise_table = PreText(text='', width=500)
+                    exercise_table.text = str(df_date_exercise[["Time", "Activity Type", "Title", "Calories", "Max HR", "Avg HR", "Activity Time"]].to_string())
+                    columns.append(exercise_table)
+                    for time, workout in df_exercise_data.iterrows():
+                        determine_time = workout['Datetime']
+                        end_time = determine_time + timedelta(minutes=20)
+                        exercise_box = BoxAnnotation(left=determine_time, right=end_time, fill_alpha=0.4, fill_color='blue')
+                        p.add_layout(exercise_box)
+            except:
+                print("No exercise data for " + date)
+            
+            
+            df_date_CGM = df_period_CGM[df_period_CGM['Date'].dt.strftime("%Y-%m-%d") == date]
+            try:
+                df_date_meals = df_response_meals[df_response_meals['Date'].dt.strftime("%Y-%m-%d") == date].sort_values(['Time'], ascending=[True])
+                
+                if not df_date_meals.empty:
+                    meal_table = PreText(text='', width=500)
+                    df_date_meals = df_date_meals.filter(["Time", "Food Name", "Energy (kcal)", "Group", "Net Carbs (g)"])
+                    meal_table.text = str(df_date_meals[["Time", "Food Name", "Energy (kcal)", "Group", "Net Carbs (g)"]].to_string())
+                    columns.append(meal_table)
+                    
+                    for time, meal in df_response_meals.iterrows():
+                        determine_time = meal['Datetime']
+                        end_time = determine_time + timedelta(minutes=20)
+                        meal_box = BoxAnnotation(left=determine_time, right=end_time, fill_alpha=0.4, fill_color='red')
+                        p.add_layout(meal_box)
+            except:
+                print("This appears to be a fasting day " + date)
+            
+            sleep_table = PreText(text='', width=500)
+            df_date_sleep = df_sleep_data[df_sleep_data['Date'].dt.strftime("%Y-%m-%d") == date]
+            if not df_date_sleep.empty:
+                df_date_sleep = df_date_sleep.filter(["Sleep Score", "Readiness Score", "Bedtime Start", "Bedtime End"]) 
+                sleep_time = df_date_sleep["Bedtime End"].dt.to_pydatetime() - df_date_sleep["Bedtime Start"].dt.to_pydatetime()
+                df_date_sleep["Total Sleep"] = format_timespan(sleep_time[0])  
+                sleep_table.text = str(df_date_sleep[["Sleep Score", "Readiness Score", "Bedtime Start", "Bedtime End", "Total Sleep"]].to_string())
+                columns.append(sleep_table)
+            
+
+            wl = len(df_date_CGM) -1
+            if not wl % 2:
+                wl = len(df_date_CGM) - 2
+            pOrder = 9 if (9 < wl-1) else (wl-1)
+            df_date_CGM_filtered = df_date_CGM[['UDT_CGMS']].apply(savgol_filter, window_length=(wl), polyorder=(pOrder))
+            p.line(df_date_CGM["Datetime"], df_date_CGM.UDT_CGMS, line_width=4, line_color="black")
+
+            # show the results
+            low_box = BoxAnnotation(top=70, fill_alpha=0.1, fill_color='red')
+            mid_box = BoxAnnotation(bottom=70, top=140, fill_alpha=0.1, fill_color='green')
+            high_box = BoxAnnotation(bottom=140, fill_alpha=0.1, fill_color='red')
+
+            p.add_layout(low_box)
+            p.add_layout(mid_box)
+            p.add_layout(high_box)
+
+            # delta = df_meal_CGM.UDT_CGMS.max() - df_meal_CGM.UDT_CGMS[0]
+            height = int(df_date_CGM.UDT_CGMS.max()*.95)
+            height2 = int(df_date_CGM.UDT_CGMS.max()*.93)
+            height3 = int(df_date_CGM.UDT_CGMS.max()*.90)
+            height4 = int(df_date_CGM.UDT_CGMS.max()*.87)
+
+            p.title.text = "Glucose Response Full Day Overview " + date
+            p.title.align = "center"
+            p.xgrid[0].grid_line_color=None
+            p.ygrid[0].grid_line_alpha=0.5
+            p.xaxis.axis_label = date
+            p.yaxis.axis_label = 'mmol/dl'
+            # show(p)
+            show(row(p, column(columns)))
+            # sleep(1)
+
+       
+        print("Daily Overview completed")
 
     def bg_food_response_matplot(self):
         current_date = self.initialDay.date()
@@ -211,9 +303,9 @@ class CGMProcessing:
             df_current_day_CGM.sort_values(['Datetime'], ascending=[True])
             df_current_day_CGM = df_current_day_CGM.set_index("Datetime", drop=False)
 
-            response_meals = df_current_day.loc[(df_current_day['group'] == 'mealData') & (df_current_day['Carbs (g)'] >= self.minCarbs)]
-            sleep_data = df_current_day.loc[df_current_day['group'] == 'sleepData']
-            exercise_data = df_current_day.loc[df_current_day['group'] == 'ExData']
+            response_meals = df_current_day.loc[(df_current_day['data_set'] == 'mealData') & (df_current_day['Carbs (g)'] >= self.minCarbs)]
+            sleep_data = df_current_day.loc[df_current_day['data_set'] == 'sleepData']
+            exercise_data = df_current_day.loc[df_current_day['data_set'] == 'ExData']
             response_meals = response_meals.dropna(how='any', axis=1)
             sleep_data = sleep_data.dropna(how='any', axis=1)
             exercise_data = exercise_data.dropna(how='any', axis=1)
@@ -234,11 +326,17 @@ class CGMProcessing:
                 df_CGM_response = df_current_day_CGM.between_time(period_start_str,period_end_str)
                 df_exercise = exercise_data.between_time(period_start_str,period_end_str)
 
+                wl = len(df_CGM_response) -1
+                if not wl % 2:
+                    wl = len(df_CGM_response) - 2
+                pOrder = 9 if (9 < wl-1) else (wl-1)
+                df_CGM_response["filtered"] = df_CGM_response[['UDT_CGMS']].apply(savgol_filter, window_length=(wl), polyorder=(pOrder))
+
                 if len(df_CGM_response) == 0:
                     continue
                 title = (str(df_CGM_response['Date'].values[0]) + " Time (Day)")
 
-                df_CGM_response.plot(x='Time', y='UDT_CGMS', ax=axes[index//2,1 if index % 2 else 0], subplots=True)
+                df_CGM_response.plot(x='Time', y='filtered', ax=axes[index//2,1 if index % 2 else 0], subplots=True)
 
                 if not df_exercise.empty:
                     for workout in df_exercise.iterrows():
@@ -265,14 +363,15 @@ class CGMProcessing:
         df_health_data = df_health_data.set_index("Date", drop=False) 
         df_health_data.sort_values(['Datetime'], ascending=[True])
         df_health_data = df_health_data.set_index("Datetime", drop = False)
-        df_period_CGM = self.healthData['CGMData'].loc[self.initialDay.date():self.finalDay.date(),:]
+        df_period_CGM = self.healthData['CGMData'].set_index("Datetime", drop=False).loc[self.initialDay.strftime("%Y-%m-%d"):self.finalDay.strftime("%Y-%m-%d"),:]
 
-        # response_meals = df_health_data.loc[(df_health_data['group'] == 'mealData') & (df_health_data['Carbs (g)'] >= self.adjustments['minCarbs'])]
-        exercise_data = df_health_data.loc[df_health_data['group'] == 'ExData']
+        response_meals = df_health_data.loc[(df_health_data['data_set'] == 'mealData') & (df_health_data['Carbs (g)'] >= self.adjustments['minCarbs'])]
+        response_meals = response_meals.set_index("Datetime", drop=False)
+        response_meals = response_meals.dropna(how='any', axis=1)
+        # response_meals = response_meals.sort_values(['Carbs (g)'], ascending=[False])
+        exercise_data = df_health_data.loc[df_health_data['data_set'] == 'ExData']
         exercise_data = exercise_data.set_index("Datetime", drop=False)
         exercise_data = exercise_data.dropna(how='any', axis=1)
-        # response_meals = response_meals.dropna(how='any', axis=1)
-        # response_meals = response_meals.sort_values(['Carbs (g)'], ascending=[False])
 
         dir_path = (self.output + os.path.sep + 'bokeh_step_responses_exercise')
         if not os.path.isdir(dir_path):
@@ -280,7 +379,7 @@ class CGMProcessing:
         for time, workout in exercise_data.iterrows():
             # output to static HTML file
             name_string = workout['Title']
-            name_string = name_string.replace(' ', '_')
+            re.sub('[^a-zA-Z0-9 \n\.]', '', name_string)
             
             output_file(dir_path + os.path.sep + name_string + '(' +time.strftime("%Y_%m_%d") + ')' +'.html')
 
@@ -295,18 +394,24 @@ class CGMProcessing:
             # add some renderers
             determine_time = workout.Datetime - timedelta(minutes=30)
             end_time = determine_time + timedelta(hours=self.resWindow.hour) + timedelta(hours=1)
-            df_exercise_cgm = df_period_CGM.loc[determine_time:end_time,:]
-            # df_meal_exercise = exercise_data.loc[determine_time:end_time,:]
+            df_exercise_CGM = df_period_CGM.loc[determine_time.strftime("%Y-%m-%d %H:%M:%S"):end_time.strftime("%Y-%m-%d %H:%M:%S"),:]
+            # df_exercise_CGM = self.catch_dt_missing(df_exercise_CGM)
+            df_meal_exercise = response_meals.loc[determine_time:end_time,:]
             try:
-                the_beginning = pd.to_datetime(df_exercise_cgm.iloc[0]['Datetime']).to_pydatetime()
+                the_beginning = pd.to_datetime(df_exercise_CGM.iloc[0]['Datetime']).to_pydatetime()
             except: #Missing Data at times due to lack of sensor
                 print('Data Failure, abandoning ' + workout['Title'] + ' Date => ' + workout['Date'].strftime("%Y-%m-%d"))
                 continue
             the_beginning = the_beginning.time()
-            df_exercise_cgm["Response Time"] = df_exercise_cgm.Datetime - timedelta(hours=the_beginning.hour, minutes=the_beginning.minute, seconds=the_beginning.second)
-            df_exercise_cgm["Response Time"] = df_exercise_cgm["Response Time"].dt.time
-            df_exercise_cgm["ZeroedCGMS"] = df_exercise_cgm.UDT_CGMS - df_exercise_cgm.iloc[0]["UDT_CGMS"]
-            p.line(df_exercise_cgm["Datetime"], df_exercise_cgm.UDT_CGMS, line_width=4, line_color="black")
+                
+            #for cases where data is missing, need to fill in data or plot may not load
+            # df_exercise_CGM.set_index("Datetime", drop=False).resample()
+            wl = len(df_exercise_CGM) -1
+            if not wl % 2:
+                wl = len(df_exercise_CGM) - 2
+            pOrder = 9 if (9 < wl-1) else (wl-1)
+            df_exercise_CGM_filtered = df_exercise_CGM[['UDT_CGMS']].apply(savgol_filter, window_length=(wl), polyorder=(pOrder))
+            p.line(df_exercise_CGM["Datetime"], df_exercise_CGM_filtered.UDT_CGMS, line_width=4, line_color="black")
 
             activity_info = workout
             activity_time = pd.to_datetime(activity_info['Activity Time'])
@@ -314,10 +419,33 @@ class CGMProcessing:
             determine_time = activity_info.Datetime.to_pydatetime()
             end_time = determine_time + timedelta(hours=activity_time.hour, minutes=activity_time.minute)
             exercise_box = BoxAnnotation(left=determine_time, right=end_time, fill_alpha=0.4, fill_color='blue')
-            label1 = Label(x=300, y=int(df_exercise_cgm.UDT_CGMS.min()*1.2), x_units='screen', text="Activity = " + str(workout.Title), render_mode='css',
+            columns = []
+            
+            # try:
+            exercise_table = PreText(text='', width=500)
+            exercise_table.text = str(workout[["Time", "Activity Type", "Title", "Calories", "Max HR", "Avg HR", "Activity Time"]].to_string())
+            columns.append(exercise_table)
+            # except:
+            #     print("Problems reading exercise data " + str(time))
+            
+            try:
+                df_meals = df_meal_exercise.sort_values(['Time'], ascending=[True]).filter(["Time", "Food Name", "Energy (kcal)", "Group", "Net Carbs (g)"])
+                if not df_meals.empty:
+                    meal_table = PreText(text='', width=500)
+                    meal_table.text = str(df_meals[["Time", "Food Name", "Energy (kcal)", "Group", "Net Carbs (g)"]].to_string())
+                    columns.append(meal_table)
+            except:
+                print("This appears to be a fasting day " + str(time))
+            
+            for time, meal in df_meal_exercise.iterrows():
+                meal_start = time
+                meal_end = meal_start + timedelta(minutes=20)                
+                meal_box = BoxAnnotation(left=meal_start, right=meal_end, fill_alpha=0.4, fill_color='red')
+                p.add_layout(meal_box)
+            label1 = Label(x=300, y=int(df_exercise_CGM.UDT_CGMS.min()*1.2), x_units='screen', text="Activity = " + str(workout.Title), render_mode='css',
                 border_line_color='black', border_line_alpha=1.0,
                 background_fill_color='white', background_fill_alpha=1.0)
-            label2 = Label(x=300, y=int(df_exercise_cgm.UDT_CGMS.min()*1.1), x_units='screen', text='Calories = ' + str(workout.Calories), render_mode='css',
+            label2 = Label(x=300, y=int(df_exercise_CGM.UDT_CGMS.min()*1.1), x_units='screen', text='Calories = ' + str(workout.Calories), render_mode='css',
                 border_line_color='black', border_line_alpha=1.0,
                 background_fill_color='white', background_fill_alpha=1.0)
             p.add_layout(exercise_box)
@@ -332,13 +460,13 @@ class CGMProcessing:
             p.add_layout(mid_box)
             p.add_layout(high_box)
 
-            delta = df_exercise_cgm.UDT_CGMS.max() - df_exercise_cgm.UDT_CGMS[0]
-            height = int(df_exercise_cgm.UDT_CGMS.max()*.95)
-            height2 = int(df_exercise_cgm.UDT_CGMS.max()*.93)
+            delta = df_exercise_CGM.UDT_CGMS.max() - df_exercise_CGM.UDT_CGMS[0]
+            height = int(df_exercise_CGM.UDT_CGMS.max()*.95)
+            height2 = int(df_exercise_CGM.UDT_CGMS.max()*.93)
             label3 = Label(x=70, y=height, x_units='screen', text="Glucose Delta = -" + str(delta), render_mode='css',
             border_line_color='black', border_line_alpha=1.0,
             background_fill_color='white', background_fill_alpha=1.0)
-            label4 = Label(x=70, y=height2, x_units='screen', text='Peak = ' + str(df_exercise_cgm.UDT_CGMS.max()) + ' mmol/dl', render_mode='css',
+            label4 = Label(x=70, y=height2, x_units='screen', text='Peak = ' + str(df_exercise_CGM.UDT_CGMS.max()) + ' mmol/dl', render_mode='css',
             border_line_color='black', border_line_alpha=1.0,
             background_fill_color='white', background_fill_alpha=1.0)
             
@@ -350,11 +478,9 @@ class CGMProcessing:
             p.ygrid[0].grid_line_alpha=0.5
             p.xaxis.axis_label = 'Time (' + str(workout['Date']) + ')'
             p.yaxis.axis_label = 'mmol/dl'
-            show(p)
-            sleep(1)
+            show(row(p, column(columns)))
+            # sleep(1)
         print('just wait until I finish')
-    
-    
     
     def bg_heatmap(self):
 
@@ -371,8 +497,9 @@ class CGMProcessing:
 
         # Prep matrices for data filling.  All data necessary to fill
         df_CGM_period_max = self.healthData['CGMData'].set_index(self.healthData['CGMData']['Datetime'])
-        df_CGM_end_test = df_CGM_period_max.loc[df_CGM_period_max['Date'] == self.finalDay.date()]
-        df_CGM_initial_test = df_CGM_period_max.loc[df_CGM_period_max['Date'] == self.initialDay.date()]
+        df_CGM_end_test = df_CGM_period_max.loc[df_CGM_period_max['Date'].dt.strftime("%Y-%m-%d") == self.finalDay.date().strftime("%Y-%m-%d")]
+        df_CGM_initial_test = df_CGM_period_max.loc[df_CGM_period_max['Date'] == self.initialDay.date().strftime("%Y-%m-%d")]
+        df_CGM_period_max = df_CGM_period_max.set_index('Datetime', drop=False)
         df_CGM_period_max = df_CGM_period_max.resample('15Min', base=15, label='right')['UDT_CGMS'].max().sort_values()
         df_CGM_end_test= df_CGM_end_test.resample('15Min', base=15, label='right')['UDT_CGMS'].max()
         df_CGM_initial_test= df_CGM_initial_test.resample('15Min', base=15, label='right')['UDT_CGMS'].max()
@@ -388,6 +515,8 @@ class CGMProcessing:
                         except:
                             df_CGM_end_test[datetime.combine(self.finalDay.date(),index.time())] = np.nan
             df_CGM_end_period_max = self.CGM_fill_decay(df_CGM_end_test, 'forward')
+            df_CGM_period_max = df_CGM_period_max.sort_values().loc[(self.initialDay).strftime("%Y-%m-%d"):(self.finalDay - timedelta(days=1)).strftime("%Y-%m-%d")]
+            df_CGM_period_max = pd.concat([df_CGM_period_max, df_CGM_end_period_max])
         if len(df_CGM_initial_test.index) < len(time_index):
             for day in date_list:
                 day = day.date()
@@ -398,13 +527,13 @@ class CGMProcessing:
                         except:
                             df_CGM_initial_test[datetime.combine(self.initialDay.date(),index.time())] = np.nan
             df_CGM_initial_period_max = self.CGM_fill_decay(df_CGM_initial_test.sort_index(), 'backward')
-            df_CGM_period_max = df_CGM_period_max.sort_values().loc[(self.initialDay + timedelta(days=1)).strftime("%Y-%m-%d"):(self.finalDay - timedelta(days=1)).strftime("%Y-%m-%d")]
-            df_CGM_period_max = pd.concat([df_CGM_period_max, df_CGM_end_period_max, df_CGM_initial_period_max])
-            #Remove redundant time indices
-            idx = np.unique( df_CGM_period_max.index.values, return_index = True )[1]
-            df_CGM_period_max = df_CGM_period_max.iloc[idx]
+            df_CGM_period_max = df_CGM_period_max.sort_values().loc[(self.initialDay + timedelta(days=1)).strftime("%Y-%m-%d"):(self.finalDay).strftime("%Y-%m-%d")]
+            df_CGM_period_max = pd.concat([df_CGM_period_max, df_CGM_initial_period_max])
+        #Remove redundant time indices
+        idx = np.unique( df_CGM_period_max.index.values, return_index = True )[1]
+        df_CGM_period_max = df_CGM_period_max.iloc[idx]
 
-        df_meals = self.healthData['combined_Health'].loc[self.healthData['combined_Health']['group'] == 'mealData']
+        df_meals = self.healthData['combined_Health'].loc[self.healthData['combined_Health']['data_set'] == 'mealData'].set_index('Datetime', drop=False)
         df_meals = df_meals.dropna(how='all', axis=1) # drop all fully nan columns as they are not useful here
         df_dt_matrix_CGM = pd.DataFrame(0, columns=date_column, index=time_index)
         df_dt_matrix_meals = pd.DataFrame(0, columns=date_column, index=time_index)
@@ -412,8 +541,7 @@ class CGMProcessing:
         for date, date_array in df_dt_matrix_CGM.iteritems():
                 
             date_array = date_array.reset_index()
-            period_date = datetime.strptime(date, "%Y-%m-%d")
-            df_meals_day = df_meals.loc[df_meals['Date'] == period_date.date()] #& (df_current_day['Carbs (g)'] >= 5)
+            df_meals_day = df_meals.loc[df_meals['Date'] == date] #& (df_current_day['Carbs (g)'] >= 5)
             df_meals_day = df_meals_day.set_index(df_meals_day['Datetime'])
 
             for time_i in range(date_array.shape[0]):
@@ -425,9 +553,9 @@ class CGMProcessing:
                     next_period_time_str = self.extract_time_from_datetime_str(str(next_period_time))
 
                 current_time = current_period_time.to_pydatetime().time()
-                current_dt = datetime.combine(period_date, current_time)
+                current_dt = datetime.combine(datetime.strptime(date, "%Y-%m-%d") , current_time)
                 next_time = next_period_time.to_pydatetime().time()
-                next_dt = datetime.combine(period_date, next_time)
+                next_dt = datetime.combine(datetime.strptime(date, "%Y-%m-%d"), next_time)
                 try:
                     CGM_max = df_CGM_period_max[current_dt]
                 except Exception as e:
@@ -435,13 +563,14 @@ class CGMProcessing:
                         CGM_max = df_CGM_period_max[next_dt]
                     except Exception as e:
                         CGM_max = df_CGM_period_max[previous_dt]
+                        print("error deriving BG, need bug fix")
                         continue
 
                 df_dt_matrix_CGM.loc[current_period_time_str, date] = CGM_max
                 meal_string = ''
                 df_meals_day = df_meals_day.sort_values(['Carbs (g)'], ascending=[False])
-                for index, meal in df_meals_day.iterrows():
-                    meal_time = datetime.combine(period_date, meal.Time)
+                for time, meal in df_meals_day.iterrows():
+                    meal_time = datetime.combine(datetime.strptime(date, "%Y-%m-%d"), meal.Time)
                     time_diff = meal_time + timedelta(hours=self.resWindow.hour)
                     if (time_diff > current_dt and current_dt >= meal_time):
                         meal_string += meal['Food Name'] + ' + '
@@ -449,20 +578,83 @@ class CGMProcessing:
 
                 previous_dt = current_dt
             print('Day ' + date + ' finished')
-
+        df_dt_matrix_CGM = df_dt_matrix_CGM.interpolate(method='linear', limit_direction='forward', axis=1)#method='polynomial', order=2) 
         print("wait!")
 
         total_days = df_dt_matrix_CGM.shape[1]
+        
+        xname = [[date_column[j] for i in range(len(time_index))] for j in range(len(date_column))]
+        yname = [[time_index[i] for i in range(len(time_index))] for j in range(len(date_column))]
+        xname = list(itertools.chain.from_iterable(xname))
+        yname = list(itertools.chain.from_iterable(yname))
+        bg_list = list(df_CGM_period_max.interpolate(method='linear', limit_direction='both'))
+        min = df_CGM_period_max.min()
+        def calc_color(bg):
+            colormap = ["#004529", "#006d2c", "#238b45", "#d9f0a3", "#fed976", "#feb24c",
+                    "#fd8d3c", "#fc4e2a", "#e31a1c", "#bd0026", "#800026"]
+            if bg < 60:
+                color = (colormap[0])
+            elif bg > 160:
+                color = (colormap[10])
+            else:
+                color = (colormap[int(((bg-60)/100)*10)])
+            return color
+
+        color_selection = ["#004529", "#006d2c", "#238b45", "#d9f0a3", "#fed976", "#feb24c", "#fd8d3c", "#fc4e2a", "#e31a1c", "#bd0026", "#800026"]
+        mapper = LinearColorMapper(palette=color_selection, low=60, high=180)#low=df_CGM_period_max.min(), high=df_CGM_period_max.min())
+        color = map(calc_color, bg_list)
+        color = list(color)
+        food_list = list(itertools.chain.from_iterable(df_dt_matrix_meals.transpose().values.tolist()))
+        xydata = {'xname': xname, 'yname': yname, 'bg': bg_list, 'foods': food_list}
+        source = ColumnDataSource(xydata)
+        data=dict(
+            xname=xname,
+            yname=yname,
+            colors=color,
+            bg=bg_list,
+            foods=food_list,
+        )
+
+        p = figure(title="Blood Glucose over " + str(total_days) + " days",
+                x_axis_location="above", tools="hover,pan,box_zoom,reset,save",
+                x_range=date_column, y_range=time_index, output_backend="webgl",
+                tooltips=[('Sample', '@yname, @xname'), ('Foods', '@foods'), ('Blood Glucose', '@bg')])
+
+        p.plot_width = 1200
+        p.plot_height = 800
+        p.grid.grid_line_color = None
+        p.axis.axis_line_color = None
+        p.axis.major_tick_line_color = None
+        p.axis.major_label_text_font_size = "7px"
+        p.axis.major_label_standoff = 0
+        p.xaxis.major_label_orientation = np.pi/3
+
+        p.rect('xname', 'yname', 0.9, 0.9, source=data,
+            color='colors',
+            line_color=None,
+            hover_line_color='black', hover_color='colors',
+            )
+
+        output_file(self.output + os.path.sep + "bgheatmap.html", title="BG Heatmap")
+
+        color_bar = ColorBar(color_mapper=mapper, location=(0, 0),
+                            ticker=BasicTicker(desired_num_ticks=len(color_selection)-2),
+                            formatter=PrintfTickFormatter(format="%d"))
+
+        p.add_layout(color_bar, 'right')
+        p.add_layout(color_bar, 'left')
+        show(p) # show the plot
+        print('just wait until I finish')
 
     def bg_food_response_bokeh(self):
         df_health_data = self.healthData['combined_Health'].set_index("Datetime", drop=False).loc[self.initialDay:self.finalDay,:]
         df_health_data = df_health_data.set_index("Date", drop=False) 
         df_health_data.sort_values(['Datetime'], ascending=[True])
         df_health_data = df_health_data.set_index("Datetime", drop = False)
-        df_period_CGM = self.healthData['CGMData'].loc[self.initialDay.date():self.finalDay.date(),:]
+        df_period_CGM = self.healthData['CGMData'].set_index("Datetime", drop=False).loc[self.initialDay.strftime("%Y-%m-%d"):self.finalDay.strftime("%Y-%m-%d"),:]
 
-        response_meals = df_health_data.loc[(df_health_data['group'] == 'mealData') & (df_health_data['Carbs (g)'] >= self.adjustments['minCarbs'])]
-        exercise_data = df_health_data.loc[df_health_data['group'] == 'ExData']
+        response_meals = df_health_data.loc[(df_health_data['data_set'] == 'mealData') & (df_health_data['Carbs (g)'] >= self.adjustments['minCarbs'])]
+        exercise_data = df_health_data.loc[df_health_data['data_set'] == 'ExData']
         exercise_data = exercise_data.set_index("Datetime", drop=False)
         exercise_data = exercise_data.dropna(how='any', axis=1)
         response_meals = response_meals.dropna(how='any', axis=1)
@@ -474,7 +666,7 @@ class CGMProcessing:
         for time, meal in response_meals.iterrows():
             # output to static HTML file
             name_string = meal['Food Name']
-            name_string = name_string.replace(',',)
+            name_string = re.sub('[^a-zA-Z0-9 \n\.]', '', name_string)
             
             output_file(dir_path + os.path.sep + name_string + '(' +time.strftime("%Y_%m_%d") + ')' + '.html')
 
@@ -489,7 +681,14 @@ class CGMProcessing:
             # add some renderers
             determine_time = meal.Datetime
             end_time = determine_time + timedelta(hours=self.resWindow.hour)
-            df_meal_CGM = df_period_CGM.loc[determine_time:end_time,:]
+            df_meal_CGM = df_period_CGM.loc[determine_time.strftime("%Y-%m-%d %H:%M:%S"):end_time.strftime("%Y-%m-%d %H:%M:%S"),:]
+            if len(df_meal_CGM) < 10:
+                continue
+            wl = (len(df_meal_CGM) - 1) 
+            if not wl % 2:
+                wl = len(df_meal_CGM) - 2
+            pOrder = 9 if (9 < wl-1) else (wl-1)
+            df_meal_CGM_filtered = df_meal_CGM[['UDT_CGMS']].apply(savgol_filter, window_length=(wl), polyorder=(pOrder))
             df_meal_exercise = exercise_data.loc[determine_time:end_time,:]
             try:
                 the_beginning = pd.to_datetime(df_meal_CGM.iloc[0]['Datetime']).to_pydatetime()
@@ -500,7 +699,7 @@ class CGMProcessing:
             df_meal_CGM["Response Time"] = df_meal_CGM.Datetime - timedelta(hours=the_beginning.hour, minutes=the_beginning.minute, seconds=the_beginning.second)
             df_meal_CGM["Response Time"] = df_meal_CGM["Response Time"].dt.time
             df_meal_CGM["ZeroedCGMS"] = df_meal_CGM.UDT_CGMS - df_meal_CGM.iloc[0]["UDT_CGMS"]
-            p.line(df_meal_CGM["Datetime"], df_meal_CGM.UDT_CGMS, line_width=4, line_color="black")
+            p.line(df_meal_CGM["Datetime"], df_meal_CGM_filtered.UDT_CGMS, line_width=4, line_color="black")
 
             if not df_meal_exercise.empty:
                 for time, workout in df_meal_exercise.iterrows():
@@ -557,72 +756,9 @@ class CGMProcessing:
             p.xaxis.axis_label = 'Time (' + str(meal['Date']) + ')'
             p.yaxis.axis_label = 'mmol/dl'
             show(p)
-            sleep(1)
+            # sleep(1)
         print('just wait until I finish')
 
-        xname = [[date_column[j] for i in range(len(time_index))] for j in range(len(date_column))]
-        yname = [[time_index[i] for i in range(len(time_index))] for j in range(len(date_column))]
-        xname = list(itertools.chain.from_iterable(xname))
-        yname = list(itertools.chain.from_iterable(yname))
-        bg_list = list(df_CGM_period_max.interpolate(method='linear', limit_direction='both'))
-        min = df_CGM_period_max.min()
-        def calc_color(bg):
-            colormap = ["#004529", "#006d2c", "#238b45", "#d9f0a3", "#fed976", "#feb24c",
-                    "#fd8d3c", "#fc4e2a", "#e31a1c", "#bd0026", "#800026"]
-            if bg < 60:
-                color = (colormap[0])
-            elif bg > 160:
-                color = (colormap[10])
-            else:
-                color = (colormap[int(((bg-60)/100)*10)])
-            return color
-
-        color_selection = ["#004529", "#006d2c", "#238b45", "#d9f0a3", "#fed976", "#feb24c", "#fd8d3c", "#fc4e2a", "#e31a1c", "#bd0026", "#800026"]
-        mapper = LinearColorMapper(palette=color_selection, low=60, high=180)#low=df_CGM_period_max.min(), high=df_CGM_period_max.min())
-        color = map(calc_color, bg_list)
-        color = list(color)
-        food_list = list(itertools.chain.from_iterable(df_dt_matrix_meals.transpose().values.tolist()))
-        xydata = {'xname': xname, 'yname': yname, 'bg': bg_list, 'foods': food_list}
-        source = ColumnDataSource(xydata)
-        data=dict(
-            xname=xname,
-            yname=yname,
-            colors=color,
-            bg=bg_list,
-            foods=food_list,
-        )
-
-        p = figure(title="Blood Glucose over " + str(total_days) + " days",
-                x_axis_location="above", tools="hover,pan,box_zoom,reset,save",
-                x_range=date_column, y_range=time_index, output_backend="webgl",
-                tooltips=[('Sample', '@yname, @xname'), ('Foods', '@foods'), ('Blood Glucose', '@bg')])
-
-        p.plot_width = 1200
-        p.plot_height = 800
-        p.grid.grid_line_color = None
-        p.axis.axis_line_color = None
-        p.axis.major_tick_line_color = None
-        p.axis.major_label_text_font_size = "7px"
-        p.axis.major_label_standoff = 0
-        p.xaxis.major_label_orientation = np.pi/3
-
-        p.rect('xname', 'yname', 0.9, 0.9, source=data,
-            color='colors',
-            line_color=None,
-            hover_line_color='black', hover_color='colors',
-            )
-
-        output_file(self.output + os.path.sep + "bgheatmap.html", title="BG Heatmap")
-
-        color_bar = ColorBar(color_mapper=mapper, location=(0, 0),
-                        ticker=BasicTicker(desired_num_ticks=len(color_selection)-2),
-                        formatter=PrintfTickFormatter(format="%d"))
-
-        p.add_layout(color_bar, 'right')
-        p.add_layout(color_bar, 'left')
-        show(p) # show the plot
-        print('just wait until I finish')
-    
     #This function assuming blocks of missing data moving in universal direction ie front or back of df
     def CGM_fill_decay(self, _df, _dir):
         count = _df.isna().sum()
@@ -656,15 +792,11 @@ class CGMProcessing:
         df_health_data = self.healthData['combined_Health'].set_index("Datetime", drop=False).loc[self.initialDay:self.finalDay,:]
         df_health_data = df_health_data.set_index("Date", drop=False) 
         df_health_data.sort_values(['Datetime'], ascending=[True])
-        df_period_CGM = self.healthData['CGMData'].set_index("Datetime", drop=False).loc[self.initialDay:self.finalDay,:]
-        df_period_CGM = df_period_CGM.set_index("Date", drop = False)
-        df_period_CGM.sort_values(['Datetime'], ascending=[True])
-        df_period_CGM = df_period_CGM.set_index("Datetime", drop=False)
-        df_period_CGM = df_period_CGM.sort_index()
+        df_health_data = df_health_data.set_index("Datetime", drop = False)
+        df_period_CGM = self.healthData['CGMData'].set_index("Datetime", drop=False).loc[self.initialDay.strftime("%Y-%m-%d"):self.finalDay.strftime("%Y-%m-%d"),:]
 
-        response_meals = df_health_data.loc[(df_health_data['group'] == 'mealData') & (df_health_data['Carbs (g)'] >= 5)]
-        # sleep_data = df_current_day.loc[df_current_day['group'] == 'OuraSleepData.csv']
-        exercise_data = df_health_data.loc[df_health_data['group'] == 'ExData']
+        response_meals = df_health_data.loc[(df_health_data['data_set'] == 'mealData') & (df_health_data['Carbs (g)'] >= self.adjustments['minCarbs'])]
+        exercise_data = df_health_data.loc[df_health_data['data_set'] == 'ExData']
         exercise_data = exercise_data.set_index("Datetime", drop=False)
         exercise_data = exercise_data.dropna(how='any', axis=1)
         response_meals = response_meals.dropna(how='any', axis=1)
@@ -702,11 +834,19 @@ class CGMProcessing:
             df_meal_CGM["Response Time"] = df_meal_CGM.Datetime - timedelta(hours=the_beginning.hour, minutes=the_beginning.minute, seconds=the_beginning.second)
             df_meal_CGM["Response Time"] = df_meal_CGM["Response Time"].dt.time
             df_meal_CGM["ZeroedCGMS"] = df_meal_CGM.UDT_CGMS - df_meal_CGM.iloc[0]["UDT_CGMS"]
+            if len(df_meal_CGM) < 10:
+                continue
+            wl = len(df_meal_CGM) -1
+            if not wl % 2:
+                wl = len(df_meal_CGM) - 2
+            pOrder = 9 if (9 < wl-1) else (wl-1)
+            df_meal_CGM["filtered"] = df_meal_CGM[['ZeroedCGMS']].apply(savgol_filter, window_length=(wl), polyorder=(pOrder))
+            
             df_temp = pd.DataFrame({'Date':[meal_time],'Meal':[name_string[0]],'Time':[list(df_meal_CGM["Response Time"])],'Glucose':[list(df_meal_CGM.ZeroedCGMS)]})
             df_plot_data = df_plot_data.append(df_temp)
             meal['Delta'] = df_meal_CGM.UDT_CGMS.max() - df_meal_CGM.UDT_CGMS[0]
             meal['Peak'] = df_meal_CGM.UDT_CGMS.max()
-            xydata = {'RespTime': df_meal_CGM["Response Time"], 'zg': df_meal_CGM.ZeroedCGMS ,
+            xydata = {'RespTime': df_meal_CGM["Response Time"], 'zg': df_meal_CGM.filtered,
                     'xname': [meal['Date'].strftime("%Y-%m-%d") for i in range(len(df_meal_CGM.ZeroedCGMS))],
                     'yname': [meal['Time'].strftime("%H:%M:%S") for i in range(len(df_meal_CGM.ZeroedCGMS))],
                     'bg': [str(int(meal['Peak'])) for i in range(len(df_meal_CGM.ZeroedCGMS))],
@@ -734,8 +874,8 @@ class CGMProcessing:
 
         hour_two = (10800000/3)*2
         response_hour_2 = Span(location=hour_two,
-                                    dimension='height', line_color='black',
-                                    line_dash='dashed', line_width=3)
+                                dimension='height', line_color='black',
+                                line_dash='dashed', line_width=3)
         p.add_layout(response_hour_2)
         p.title.text = "Glucose Response"
         p.xgrid[0].grid_line_color=None
