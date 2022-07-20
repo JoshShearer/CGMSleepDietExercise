@@ -222,7 +222,7 @@ class CGMProcessing:
                     columns.append(exercise_table)
                     for time, workout in df_exercise_data.iterrows():
                         determine_time = workout['Datetime']
-                        end_time = determine_time + timedelta(minutes=20)
+                        end_time = determine_time + pd.to_timedelta(workout['Activity Time'])
                         exercise_box = BoxAnnotation(left=determine_time, right=end_time, fill_alpha=0.4, fill_color='blue')
                         p.add_layout(exercise_box)
             except:
