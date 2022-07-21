@@ -183,7 +183,7 @@ class CGMProcessing:
         df_period_CGM = self.healthData['CGMData'].loc[self.initialDay:self.finalDay,:].set_index(["Datetime"], drop=False)
         # df_period_CGM = df_period_CGM.interpolate(method='linear', limit_direction='both')
 
-        df_response_meals = df_health_data.loc[(df_health_data['data_set'] == 'mealData') & (df_health_data['Carbs (g)'] >= self.adjustments['minCarbs'])]
+        df_response_meals = df_health_data.loc[(df_health_data['data_set'] == 'mealData') & (df_health_data['Net Carbs (g)'] >= self.adjustments['minCarbs'])]
         df_response_meals = df_response_meals.dropna(how='any', axis=1)
         df_response_meals = df_response_meals.sort_values(['Net Carbs (g)'], ascending=[False])
         
@@ -303,7 +303,7 @@ class CGMProcessing:
             df_current_day_CGM.sort_values(['Datetime'], ascending=[True])
             df_current_day_CGM = df_current_day_CGM.set_index("Datetime", drop=False)
 
-            response_meals = df_current_day.loc[(df_current_day['data_set'] == 'mealData') & (df_current_day['Carbs (g)'] >= self.minCarbs)]
+            response_meals = df_current_day.loc[(df_current_day['data_set'] == 'mealData') & (df_current_day['Net Carbs (g)'] >= self.minCarbs)]
             sleep_data = df_current_day.loc[df_current_day['data_set'] == 'sleepData']
             exercise_data = df_current_day.loc[df_current_day['data_set'] == 'ExData']
             response_meals = response_meals.dropna(how='any', axis=1)
@@ -365,7 +365,7 @@ class CGMProcessing:
         df_health_data = df_health_data.set_index("Datetime", drop = False)
         df_period_CGM = self.healthData['CGMData'].set_index("Datetime", drop=False).loc[self.initialDay.strftime("%Y-%m-%d"):self.finalDay.strftime("%Y-%m-%d"),:]
 
-        response_meals = df_health_data.loc[(df_health_data['data_set'] == 'mealData') & (df_health_data['Carbs (g)'] >= self.adjustments['minCarbs'])]
+        response_meals = df_health_data.loc[(df_health_data['data_set'] == 'mealData') & (df_health_data['Net Carbs (g)'] >= self.adjustments['minCarbs'])]
         response_meals = response_meals.set_index("Datetime", drop=False)
         response_meals = response_meals.dropna(how='any', axis=1)
         # response_meals = response_meals.sort_values(['Carbs (g)'], ascending=[False])
@@ -392,8 +392,13 @@ class CGMProcessing:
 
 
             # add some renderers
+            activity_time = pd.to_datetime(workout['Activity Time'])
+            activity_time = activity_time.to_pydatetime()
+            ex_start = workout.Datetime
+            ex_end = ex_start + timedelta(hours=activity_time.hour, minutes=activity_time.minute)
             determine_time = workout.Datetime - timedelta(minutes=30)
             end_time = determine_time + timedelta(hours=self.resWindow.hour) + timedelta(hours=1)
+            df_workout_CGM = df_period_CGM.loc[ex_start.strftime("%Y-%m-%d %H:%M:%S"):ex_end.strftime("%Y-%m-%d %H:%M:%S"),:]
             df_exercise_CGM = df_period_CGM.loc[determine_time.strftime("%Y-%m-%d %H:%M:%S"):end_time.strftime("%Y-%m-%d %H:%M:%S"),:]
             # df_exercise_CGM = self.catch_dt_missing(df_exercise_CGM)
             df_meal_exercise = response_meals.loc[determine_time:end_time,:]
@@ -413,12 +418,8 @@ class CGMProcessing:
             df_exercise_CGM_filtered = df_exercise_CGM[['UDT_CGMS']].apply(savgol_filter, window_length=(wl), polyorder=(pOrder))
             p.line(df_exercise_CGM["Datetime"], df_exercise_CGM_filtered.UDT_CGMS, line_width=4, line_color="black")
 
-            activity_info = workout
-            activity_time = pd.to_datetime(activity_info['Activity Time'])
-            activity_time = activity_time.to_pydatetime()
-            determine_time = activity_info.Datetime.to_pydatetime()
-            end_time = determine_time + timedelta(hours=activity_time.hour, minutes=activity_time.minute)
-            exercise_box = BoxAnnotation(left=determine_time, right=end_time, fill_alpha=0.4, fill_color='blue')
+                        
+            exercise_box = BoxAnnotation(left=ex_start, right=ex_end, fill_alpha=0.4, fill_color='blue')
             columns = []
             
             # try:
@@ -459,11 +460,12 @@ class CGMProcessing:
             p.add_layout(low_box)
             p.add_layout(mid_box)
             p.add_layout(high_box)
-
-            delta = df_exercise_CGM.UDT_CGMS.max() - df_exercise_CGM.UDT_CGMS[0]
+            
+            # df_workout_CGM = df_workout_CGM.reset_index()
+            delta = abs(df_workout_CGM['UDT_CGMS'].min() - df_workout_CGM['UDT_CGMS'][0])
             height = int(df_exercise_CGM.UDT_CGMS.max()*.95)
             height2 = int(df_exercise_CGM.UDT_CGMS.max()*.93)
-            label3 = Label(x=70, y=height, x_units='screen', text="Glucose Delta = -" + str(delta), render_mode='css',
+            label3 = Label(x=70, y=height, x_units='screen', text="Glucose Delta = " + str(delta), render_mode='css',
             border_line_color='black', border_line_alpha=1.0,
             background_fill_color='white', background_fill_alpha=1.0)
             label4 = Label(x=70, y=height2, x_units='screen', text='Peak = ' + str(df_exercise_CGM.UDT_CGMS.max()) + ' mmol/dl', render_mode='css',
@@ -795,7 +797,7 @@ class CGMProcessing:
         df_health_data = df_health_data.set_index("Datetime", drop = False)
         df_period_CGM = self.healthData['CGMData'].set_index("Datetime", drop=False).loc[self.initialDay.strftime("%Y-%m-%d"):self.finalDay.strftime("%Y-%m-%d"),:]
 
-        response_meals = df_health_data.loc[(df_health_data['data_set'] == 'mealData') & (df_health_data['Carbs (g)'] >= self.adjustments['minCarbs'])]
+        response_meals = df_health_data.loc[(df_health_data['data_set'] == 'mealData') & (df_health_data['Net Carbs (g)'] >= self.adjustments['minCarbs'])]
         exercise_data = df_health_data.loc[df_health_data['data_set'] == 'ExData']
         exercise_data = exercise_data.set_index("Datetime", drop=False)
         exercise_data = exercise_data.dropna(how='any', axis=1)
