@@ -476,7 +476,7 @@ class CGMProcessing:
             p.title.align = "center"
             p.xgrid[0].grid_line_color=None
             p.ygrid[0].grid_line_alpha=0.5
-            p.xaxis.axis_label = 'Time (' + str(workout['Date']) + ')'
+            p.xaxis.axis_label = 'Time (' + workout['Date'].strftime("%Y-%m-%d") + ')'
             p.yaxis.axis_label = 'mmol/dl'
             show(row(p, column(columns)))
             # sleep(1)
@@ -658,7 +658,7 @@ class CGMProcessing:
         exercise_data = exercise_data.set_index("Datetime", drop=False)
         exercise_data = exercise_data.dropna(how='any', axis=1)
         response_meals = response_meals.dropna(how='any', axis=1)
-        response_meals = response_meals.sort_values(['Carbs (g)'], ascending=[False])
+        response_meals = response_meals.sort_values(['Net Carbs (g)'], ascending=[False])
 
         dir_path = (self.output + os.path.sep + 'bokeh_step_responses_meals')
         if not os.path.isdir(dir_path):
@@ -738,7 +738,7 @@ class CGMProcessing:
             label2 = Label(x=70, y=height2, x_units='screen', text='Peak = ' + str(df_meal_CGM.UDT_CGMS.max()) + ' mmol/dl', render_mode='css',
             border_line_color='black', border_line_alpha=1.0,
             background_fill_color='white', background_fill_alpha=1.0)
-            label3 = Label(x=70, y=height3, x_units='screen', text='Total Carbs = ' + str(meal['Carbs (g)']) + ' g', render_mode='css',
+            label3 = Label(x=70, y=height3, x_units='screen', text='Total Net Carbs = ' + str(meal['Net Carbs (g)']) + ' g', render_mode='css',
             border_line_color='black', border_line_alpha=1.0,
             background_fill_color='white', background_fill_alpha=1.0)
             label4 = Label(x=70, y=height4, x_units='screen', text='Total Calories = ' + str(meal['Energy (kcal)']), render_mode='css',
@@ -753,7 +753,7 @@ class CGMProcessing:
             p.title.align = "center"
             p.xgrid[0].grid_line_color=None
             p.ygrid[0].grid_line_alpha=0.5
-            p.xaxis.axis_label = 'Time (' + str(meal['Date']) + ')'
+            p.xaxis.axis_label = 'Time (' + meal['Date'].strftime("%Y-%m-%d") + ')'
             p.yaxis.axis_label = 'mmol/dl'
             show(p)
             # sleep(1)
