@@ -132,10 +132,11 @@ class CGMProcessing:
         self.healthData['combined_Health'] = self.healthData['combined_Health'].sort_values(by='Datetime', ascending=True)
         self.healthData['combined_Health'] = self.healthData['combined_Health'].set_index("Date", drop=False)
         self.healthData['CGMData'] = self.healthData['CGMData'].set_index(["Datetime"], drop=False).loc[self.initialDay.strftime('%Y-%m-%d %H:%m:%S'):self.finalDay.strftime('%Y-%m-%d %H:%m:%S'),:]
-        if self.analysis['calCorrection']:
-            self.healthData['CGMData_original'] = self.healthData['CGMData']
-            self.healthData['CGMData'] = self.bg_calibration_correction()
-            self.healthData['CGMData'] = self.healthData['CGMData'].set_index("Date", drop=False)
+        # if self.analysis['calCorrection']:
+        #     self.healthData['CGMData_original'] = self.healthData['CGMData']
+        #     self.healthData['CGMData'] = self.bg_calibration_correction()
+        #     self.healthData['CGMData'] = self.healthData['CGMData'].set_index("Date", drop=False)
+        self.healthData["CGMData"] = self.fill_missing_CGM_data()
         return
 
     def extract_time_from_datetime_str(self, day):
@@ -159,19 +160,20 @@ class CGMProcessing:
         
         return df
         
-    def process_mealData(self):
+    def process_healthData(self):
         if self.analysis['matplotlib']:
             self.bg_food_response_matplot()
         if self.analysis['mealStep']:    
             self.bg_food_response_bokeh()
         if self.analysis['exerciseStep']:    
             self.bg_exercise_response_bokeh()
+        if self.analysis['dayOverview']:
+            self.bg_daily_overview()
         if self.analysis['heat']:    
             self.bg_heatmap()
         if self.analysis['multiplot']:    
             self.bg_multi_plot()
-        if self.analysis['dayOverview']:
-            self.bg_daily_overview()
+        
         
         return
     
@@ -180,7 +182,7 @@ class CGMProcessing:
         df_health_data = df_health_data.set_index("Date", drop=False) 
         df_health_data.sort_values(['Datetime'], ascending=[True])
         df_health_data = df_health_data.set_index("Datetime", drop = False)
-        df_period_CGM = self.healthData['CGMData'].loc[self.initialDay:self.finalDay,:].set_index(["Datetime"], drop=False)
+        df_period_CGM = self.healthData['CGMData'].set_index("Datetime", drop=False).loc[self.initialDay:self.finalDay,:].set_index(["Datetime"], drop=False)
         # df_period_CGM = df_period_CGM.interpolate(method='linear', limit_direction='both')
 
         df_response_meals = df_health_data.loc[(df_health_data['data_set'] == 'mealData') & (df_health_data['Net Carbs (g)'] >= self.adjustments['minCarbs'])]
@@ -358,6 +360,39 @@ class CGMProcessing:
             current_date = current_date + timedelta(days=1)
         return
 
+    def fill_missing_CGM_data(self):
+        num_days = (self.finalDay.date()-self.initialDay.date()).days + 1 #inclusive of last day
+        date_list = [self.initialDay.date() + timedelta(days=x) for x in range(num_days)]
+        _df = self.healthData["CGMData"]
+        # _df = _df.droplevel(0).reset_index()
+        # _df = _df.resample('5T').ffill().reset_index()
+        for date in date_list:
+            # _df = _df.reset_index()
+            if (date != self.initialDay.date() and date != self.finalDay.date()):
+                df_date_CGM = _df[_df['Date'].dt.strftime("%Y-%m-%d") == date.strftime("%Y-%m-%d")]
+                
+                if len(df_date_CGM) < 288:
+                    try:
+                        time = df_date_CGM["Time"][0]
+                        dtime = datetime.combine(date, time)  
+                    except:
+                        dtime = datetime.combine(date, datetime.strptime("00:00:00", format=("%H:%m:%S")))                  
+                    time_list = [dtime + timedelta(minutes=x*5) for x in range(288)]
+                    time_df = pd.DataFrame(time_list, columns=["Datetime"])
+                    for index, datime in time_df.iterrows():
+                        test = _df[_df['Datetime'] == datime['Datetime']]
+                        if test.empty:
+                            new_row = pd.Series([datime['Datetime'].date(), datime['Datetime'].time(), np.nan, np.nan, np.nan, np.nan, np.nan, datime['Datetime'] ], index=_df.columns)
+                            new_row['Datetime'] = pd.to_datetime(new_row['Datetime'])
+                            new_row['Date'] = pd.to_datetime(new_row['Date'], format='%Y-%m-%d', exact=True)
+                            # _df.loc[len(_df.index)] = new_row
+                            _df = _df.append(new_row, ignore_index=True)
+                    _df = _df.sort_values('Datetime').reset_index()
+        _df = _df.interpolate(method='linear', limit_direction='forward')
+        _df['UDT_CGMS'] = _df['UDT_CGMS'].round(decimals=0)
+        return _df
+        
+        
     def bg_exercise_response_bokeh(self):
         df_health_data = self.healthData['combined_Health'].set_index("Datetime", drop=False).loc[self.initialDay:self.finalDay,:]
         df_health_data = df_health_data.set_index("Date", drop=False) 
