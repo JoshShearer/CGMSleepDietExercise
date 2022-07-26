@@ -62,22 +62,6 @@ adjustments:
 #This will save all response graphs and data
 outputFileDirectory: C:\CGMOutputData
 
-#directory of file including filename.  All files must be in .csv format
-dataFiles:
- CGMData: H:\OneDrive\Documents\MiscDocs\Filing Cabinet\Health\xDrip\2022\xDripCGM.csv            # required
- mealData: H:\OneDrive\Documents\MiscDocs\Filing Cabinet\Health\Cronometer\2022\servings.csv      # required
- ExData: H:\OneDrive\Documents\MiscDocs\Filing Cabinet\Health\Garmin\2022\GarminActivities.csv    # optional
- sleepData: H:\OneDrive\Documents\MiscDocs\Filing Cabinet\Health\Oura\2022\oura_sleep.csv         # optional
- BioData: H:\OneDrive\Documents\MiscDocs\Filing Cabinet\Health\Cronometer\2022\biometrics.csv     # optional
-
-# date range for the CGM processing window.  Allows downloading all data instead of matching window.
-# must be in the form of Month/Day/Year
-dateRange:
- initialDay: 07/11/2022 11:45 # required
- finalDay: 07/13/2022 20:30    # required
-
-#This will save all response graphs and data
-outputFileDirectory: C:\CGMOutputData
 ```
 ## Execute
 
