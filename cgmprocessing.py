@@ -193,7 +193,7 @@ class CGMProcessing:
         df_exercise_data = df_exercise_data.dropna(how='any', axis=1).set_index(['Datetime'], drop=False)
         
         df_sleep_data = self.healthData['sleepData'].set_index("Datetime", drop=False).loc[self.initialDay.date():self.finalDay.date(),:]
-        df_sleep_data = df_sleep_data.dropna(how='any', axis=1)
+        # df_sleep_data = df_sleep_data.dropna(how='any', axis=1)
         
         #create an array for all the dates
         num_days = (self.finalDay.date()-self.initialDay.date()).days + 1 #inclusive of last day
@@ -370,13 +370,17 @@ class CGMProcessing:
             # _df = _df.reset_index()
             if (date != self.initialDay.date() and date != self.finalDay.date()):
                 df_date_CGM = _df[_df['Date'].dt.strftime("%Y-%m-%d") == date.strftime("%Y-%m-%d")]
-                
+                df_date_CGM = df_date_CGM.reset_index(drop=True)
                 if len(df_date_CGM) < 288:
                     try:
                         time = df_date_CGM["Time"][0]
                         dtime = datetime.combine(date, time)  
                     except:
-                        dtime = datetime.combine(date, datetime.strptime("00:00:00", format=("%H:%m:%S")))                  
+                        try:
+                            dtime = datetime.combine(date, datetime.strptime("00:00:00", format=("%H:%m:%S")))  
+                        except:
+                            input("It appears that you may be missing data for the date range selected.  Please correct and rerun.  Script Terminating!") 
+                            break               
                     time_list = [dtime + timedelta(minutes=x*5) for x in range(288)]
                     time_df = pd.DataFrame(time_list, columns=["Datetime"])
                     for index, datime in time_df.iterrows():
@@ -387,7 +391,7 @@ class CGMProcessing:
                             new_row['Date'] = pd.to_datetime(new_row['Date'], format='%Y-%m-%d', exact=True)
                             # _df.loc[len(_df.index)] = new_row
                             _df = _df.append(new_row, ignore_index=True)
-                    _df = _df.sort_values('Datetime').reset_index()
+                    _df = _df.sort_values('Datetime')
         _df = _df.interpolate(method='linear', limit_direction='forward')
         _df['UDT_CGMS'] = _df['UDT_CGMS'].round(decimals=0)
         return _df
@@ -497,7 +501,10 @@ class CGMProcessing:
             p.add_layout(high_box)
             
             # df_workout_CGM = df_workout_CGM.reset_index()
-            delta = abs(df_workout_CGM['UDT_CGMS'].min() - df_workout_CGM['UDT_CGMS'][0])
+            try:
+                delta = abs(df_workout_CGM['UDT_CGMS'].min() - df_workout_CGM['UDT_CGMS'][0])
+            except:
+                print("minimal data available for " + workout['Title'])
             height = int(df_exercise_CGM.UDT_CGMS.max()*.95)
             height2 = int(df_exercise_CGM.UDT_CGMS.max()*.93)
             label3 = Label(x=70, y=height, x_units='screen', text="Glucose Delta = " + str(delta), render_mode='css',
