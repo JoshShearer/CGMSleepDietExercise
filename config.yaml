@@ -21,10 +21,12 @@ dataAnalysis:
  sleepCorr: True       # Sleep Data will be used to show potential correlations with glucose response
  exerciseCorr: True    # Exercise Data will be used to show potential correlations with glucose response and added to meal response graphs
  biometricCorr: True   # biometricMetrics from cronometer will be used to show potential correlations with glucose response
- matplotlib: False     # A step response via matplotlib for each meal above 5 carbs
- bokeh: True           # A step response via BOKEH for each meal above 5 carbs
+ matplotlib: False     # A CGM step response via matplotlib for each meal above 5 carbs
+ mealStep: False       # A CGM step response via BOKEH for each meal above "minCarbs" 
+ exerciseStep: False    # A CGM step response via BOKEH for each workout 
  heat: True            # A heat map covering the entire duration window
  multiplot: True       # A single plot with all step responses shown.
+ dayOverview: True
  biometricCorr: True   # Will produce plots showing step responses for biometrics shown below.  Must match output
  supplementCorr: True  # Will produce plots showing step resonses for Supplements of interest shown below. String must match output
 
